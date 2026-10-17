@@ -236,6 +236,9 @@
   .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
   .backup-nag { background: var(--warn-soft); color: var(--warn); border-radius: 12px; padding: 10px 12px; font-size: 14px; margin-top: 12px; display: flex; justify-content: space-between; gap: 10px; align-items: center; }
   .backup-nag button { border: 0; background: transparent; color: inherit; font-weight: 700; text-decoration: underline; }
+  .help .section p { color: var(--text); }
+  .help .section p + p { margin-top: -4px; }
+  .help .section p:last-child { margin-bottom: 0; }
   [hidden] { display: none !important; }
 </style>
 </head>
@@ -247,9 +250,14 @@
       <h1 id="studioName">VS Makeovers Studio</h1>
       <p>Appointments</p>
     </div>
+    <div style="display:flex">
+    <button class="icon-btn" id="openHelp" aria-label="How to use">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg>
+    </button>
     <button class="icon-btn" id="openSettings" aria-label="Settings and backup">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
     </button>
+    </div>
   </div>
 </header>
 
@@ -415,6 +423,56 @@
         <textarea id="waText" rows="5" aria-label="WhatsApp message template"></textarea>
       </div>
       <button class="btn secondary" id="saveWa">Save message</button>
+    </div>
+
+    <div class="section">
+      <h3>Start fresh</h3>
+      <p>Deletes every booking on this phone, for example to clear test bookings. Your services and WhatsApp message are kept. Save a backup first if you might need them.</p>
+      <button class="btn danger" id="clearAll" style="border:1px solid var(--danger)">Delete all bookings</button>
+    </div>
+  </div>
+</dialog>
+
+<!-- Help -->
+<dialog id="helpDlg">
+  <div class="sheet-head">
+    <h2>How to use</h2>
+    <button type="button" class="icon-btn" data-close aria-label="Close">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+    </button>
+  </div>
+  <div class="sheet-body help">
+    <div class="section">
+      <h3>Add a booking</h3>
+      <p>Tap <b>New booking</b> at the bottom. Fill in the name, phone and date. Time, services, amounts and notes are optional. Tap <b>Save booking</b>.</p>
+      <p>For a client who has booked before, start typing their name and pick it from the list. Their number fills in by itself.</p>
+    </div>
+    <div class="section">
+      <h3>On each booking</h3>
+      <p><b>Call</b> rings the client. <b>WhatsApp</b> opens a chat with a reminder message already typed, so just tap send. <b>Map</b> opens the address in Google Maps. <b>Done</b> marks it finished. <b>Edit</b> changes or deletes it.</p>
+    </div>
+    <div class="section">
+      <h3>Tabs</h3>
+      <p><b>Upcoming</b> shows bookings from today onwards. Anything from an earlier day that isn't marked done stays at the top so you don't forget it.</p>
+      <p><b>Calendar</b> shows the month. The number under a date is how many bookings that day has. Tap a date to see them, or <b>+ Add on this day</b>.</p>
+      <p><b>Past</b> has finished and cancelled bookings.</p>
+    </div>
+    <div class="section">
+      <h3>Money</h3>
+      <p>Enter the <b>Total</b> and <b>Advance paid</b> when booking. Each card shows the balance, and the top of the screen shows the total still to collect. When the client pays the rest, tap Edit and change Advance to the full amount.</p>
+    </div>
+    <div class="section">
+      <h3>Two clashing bookings?</h3>
+      <p>If you pick a time within 2 hours of another booking that day, the form shows a yellow warning. You can still save it.</p>
+    </div>
+    <div class="section">
+      <h3>Keep your bookings safe ⚠️</h3>
+      <p>Bookings are saved <b>only on this phone</b>. Always open the app from the <b>VS icon on your home screen</b>, not from Safari.</p>
+      <p>Once a week, tap ⚙️ → <b>Save backup file</b> and send it to yourself on WhatsApp or save it to Files. If you get a new phone, add the app again and tap ⚙️ → <b>Restore from backup file</b>.</p>
+    </div>
+    <div class="section">
+      <h3>Excel sheet</h3>
+      <p>⚙️ → <b>Download as Excel sheet</b> gives you all bookings in a spreadsheet, for example to count the month's work.</p>
     </div>
   </div>
 </dialog>
@@ -633,7 +691,7 @@
       html += groupedHtml(items);
       $('#list').innerHTML = html || (query
         ? emptyHtml('No matches', 'Try a different name or number.')
-        : emptyHtml('No upcoming bookings', 'Tap <b style="display:inline;color:var(--brand)">New booking</b> to add one.'));
+        : emptyHtml('No upcoming bookings', 'Tap <b style="display:inline;color:var(--brand)">New booking</b> to add one.<br><button class="link-btn" data-help>How to use this app</button>'));
     } else {
       items = appts.filter(a => (a.status || 'upcoming') !== 'upcoming' && matches(a))
         .sort((a, b) => sortAsc(b, a));
@@ -873,6 +931,20 @@
     persistSettings();
     toast('Message saved');
   });
+  $('#clearAll').addEventListener('click', () => {
+    if (!appts.length) { toast('There are no bookings to delete'); return; }
+    if (!confirm(`Delete all ${appts.length} bookings from this phone? This can't be undone unless you have a backup file.`)) return;
+    if (!confirm('Are you sure? Tap OK to delete everything.')) return;
+    appts = [];
+    persist();
+    settingsDlg.close();
+    render();
+    toast('All bookings deleted');
+  });
+
+  const helpDlg = $('#helpDlg');
+  $('#openHelp').addEventListener('click', () => helpDlg.showModal());
+  document.addEventListener('click', e => { if (e.target.closest('[data-help]')) helpDlg.showModal(); });
 
   // Re-render at midnight / when the app comes back to the foreground so "Today" stays right.
   document.addEventListener('visibilitychange', () => { if (!document.hidden) render(); });

@@ -1,5 +1,5 @@
 // Caches the app so it opens without internet. Bump VERSION when you change any file.
-const VERSION = 'vs-appt-v1';
+const VERSION = 'vs-appt-v2';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './apple-touch-icon.png', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', e => {
