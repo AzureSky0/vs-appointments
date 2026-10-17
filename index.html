@@ -1,0 +1,894 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>VS Appointments</title>
+<meta name="description" content="Appointment book for VS Makeovers Studio">
+<meta name="theme-color" content="#b0476a">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="VS Appointments">
+<style>
+  :root {
+    --bg: #faf6f4;
+    --surface: #ffffff;
+    --surface-2: #f3ebe8;
+    --text: #2a1f22;
+    --muted: #7a6a6e;
+    --border: #e8dcd8;
+    --brand: #b0476a;
+    --brand-ink: #ffffff;
+    --brand-soft: #f7e4ea;
+    --ok: #2f7d5b;
+    --ok-soft: #e1f1e9;
+    --warn: #a86512;
+    --warn-soft: #fbeedb;
+    --danger: #b3261e;
+    --shadow: 0 1px 2px rgba(42,31,34,.06), 0 4px 14px rgba(42,31,34,.06);
+    --radius: 14px;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #171214;
+      --surface: #221a1d;
+      --surface-2: #2c2226;
+      --text: #f3e9ec;
+      --muted: #ab989e;
+      --border: #3a2e32;
+      --brand: #e07a9c;
+      --brand-ink: #1d1215;
+      --brand-soft: #3d2530;
+      --ok: #6cc59a;
+      --ok-soft: #1f3529;
+      --warn: #e5a656;
+      --warn-soft: #3a2c19;
+      --danger: #f2827a;
+      --shadow: none;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #171214; --surface: #221a1d; --surface-2: #2c2226; --text: #f3e9ec; --muted: #ab989e;
+    --border: #3a2e32; --brand: #e07a9c; --brand-ink: #1d1215; --brand-soft: #3d2530;
+    --ok: #6cc59a; --ok-soft: #1f3529; --warn: #e5a656; --warn-soft: #3a2c19; --danger: #f2827a;
+    --shadow: none; color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font: 16px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    -webkit-tap-highlight-color: transparent;
+    padding-bottom: calc(96px + env(safe-area-inset-bottom));
+  }
+  button, input, select, textarea { font: inherit; color: inherit; }
+  button { cursor: pointer; }
+  .wrap { max-width: 640px; margin: 0 auto; padding: 0 16px; }
+
+  header.top {
+    background: var(--brand);
+    color: var(--brand-ink);
+    padding: calc(14px + env(safe-area-inset-top)) 0 18px;
+  }
+  header.top .wrap { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  header.top h1 { font-size: 20px; margin: 0; letter-spacing: .2px; }
+  header.top p { margin: 2px 0 0; font-size: 13px; opacity: .85; }
+  .icon-btn {
+    background: transparent; border: 0; color: inherit; width: 44px; height: 44px;
+    border-radius: 50%; display: grid; place-items: center;
+  }
+  .icon-btn:hover { background: rgba(255,255,255,.15); }
+  .icon-btn svg { width: 24px; height: 24px; }
+
+  .stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin: 14px 0 6px; }
+  .stat {
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 10px 12px; box-shadow: var(--shadow);
+  }
+  .stat b { display: block; font-size: 20px; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .stat span { font-size: 12px; color: var(--muted); }
+
+  .tabs {
+    display: flex; gap: 4px; background: var(--surface-2); padding: 4px; border-radius: 12px; margin: 12px 0;
+  }
+  .tabs button {
+    flex: 1; border: 0; background: transparent; padding: 9px 6px; border-radius: 9px; font-weight: 600;
+    color: var(--muted);
+  }
+  .tabs button[aria-selected="true"] { background: var(--surface); color: var(--text); box-shadow: var(--shadow); }
+
+  .search {
+    width: 100%; padding: 11px 14px; border-radius: 12px; border: 1px solid var(--border);
+    background: var(--surface); margin-bottom: 8px;
+  }
+
+  .day-head { font-size: 13px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .6px; margin: 18px 2px 8px; }
+  .day-head.today { color: var(--brand); }
+
+  .card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 14px; margin-bottom: 10px; box-shadow: var(--shadow);
+    border-left: 4px solid var(--brand);
+  }
+  .card.done { border-left-color: var(--ok); }
+  .card.cancelled { border-left-color: var(--muted); opacity: .7; }
+  .card-top { display: flex; gap: 12px; align-items: flex-start; }
+  .time { font-weight: 700; min-width: 70px; color: var(--brand); font-size: 15px; padding-top: 1px; }
+  .card.done .time { color: var(--ok); }
+  .who { flex: 1; min-width: 0; }
+  .who h3 { margin: 0; font-size: 17px; overflow-wrap: anywhere; }
+  .phone { color: var(--muted); font-size: 14px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+  .chip { background: var(--brand-soft); color: var(--text); font-size: 12px; padding: 3px 9px; border-radius: 999px; }
+  .badge { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px; text-transform: uppercase; letter-spacing: .4px; }
+  .badge.done { background: var(--ok-soft); color: var(--ok); }
+  .badge.cancelled { background: var(--surface-2); color: var(--muted); }
+  .badge.due { background: var(--warn-soft); color: var(--warn); }
+  .meta { font-size: 14px; color: var(--muted); margin-top: 8px; overflow-wrap: anywhere; }
+  .meta strong { color: var(--text); font-weight: 600; }
+  .notes { font-size: 14px; margin-top: 8px; padding: 8px 10px; background: var(--surface-2); border-radius: 10px; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .actions { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 5px; margin-top: 12px; }
+  .actions a, .actions button {
+    display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 0;
+    text-decoration: none; color: var(--text); background: var(--surface-2); border: 0;
+    border-radius: 10px; padding: 8px 2px; font-size: 11px; font-weight: 600; white-space: nowrap;
+  }
+  .actions svg { width: 20px; height: 20px; color: var(--brand); }
+  .actions .done-btn svg { color: var(--ok); }
+
+  .empty { text-align: center; color: var(--muted); padding: 40px 16px; }
+  .empty b { display: block; color: var(--text); font-size: 17px; margin-bottom: 4px; }
+
+  .fab {
+    position: fixed; left: 50%; transform: translateX(-50%);
+    bottom: calc(18px + env(safe-area-inset-bottom));
+    background: var(--brand); color: var(--brand-ink); border: 0; border-radius: 999px;
+    padding: 15px 26px; font-weight: 700; font-size: 16px;
+    box-shadow: 0 6px 20px rgba(176,71,106,.35); display: flex; gap: 8px; align-items: center;
+  }
+  .fab svg { width: 20px; height: 20px; }
+
+  /* Calendar */
+  .cal { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; box-shadow: var(--shadow); }
+  .cal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+  .cal-head h2 { font-size: 17px; margin: 0; }
+  .cal-head button { border: 0; background: var(--surface-2); width: 38px; height: 38px; border-radius: 10px; font-size: 18px; }
+  .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+  .cal-grid .wd { text-align: center; font-size: 11px; color: var(--muted); font-weight: 700; padding: 4px 0; }
+  .cal-grid button {
+    aspect-ratio: 1; border: 0; background: transparent; border-radius: 10px; position: relative;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 15px; padding: 0;
+  }
+  .cal-grid button.out { color: var(--muted); opacity: .45; }
+  .cal-grid button.is-today { font-weight: 800; color: var(--brand); }
+  .cal-grid button.sel { background: var(--brand); color: var(--brand-ink); }
+  .cal-grid .count {
+    font-size: 10px; font-weight: 700; min-width: 16px; height: 16px; line-height: 16px; border-radius: 8px;
+    background: var(--brand-soft); color: var(--brand); margin-top: 2px; padding: 0 4px;
+  }
+  .cal-grid button.sel .count { background: var(--brand-ink); color: var(--brand); }
+  .link-btn { border: 0; background: transparent; color: var(--brand); font-weight: 700; padding: 8px 2px; }
+
+  /* Dialogs */
+  dialog {
+    border: 0; padding: 0; width: 100%; max-width: 640px; max-height: 100%; height: 100%;
+    background: var(--bg); color: var(--text); margin: 0 auto;
+  }
+  @media (min-width: 700px) {
+    dialog { height: auto; max-height: 92vh; margin: auto; border-radius: 18px; }
+  }
+  dialog::backdrop { background: rgba(0,0,0,.45); }
+  .sheet-head {
+    position: sticky; top: 0; z-index: 2; background: var(--bg); border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between; padding: calc(10px + env(safe-area-inset-top)) 8px 10px 16px;
+  }
+  .sheet-head h2 { margin: 0; font-size: 18px; }
+  .sheet-head .icon-btn:hover { background: var(--surface-2); }
+  .sheet-body { padding: 16px; }
+  .field { margin-bottom: 16px; }
+  .field label, .field .lbl { display: block; font-size: 14px; font-weight: 600; margin-bottom: 6px; }
+  .field .hint { font-size: 12px; color: var(--muted); font-weight: 400; }
+  .field input, .field select, .field textarea {
+    width: 100%; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--border); background: var(--surface);
+  }
+  /* iOS Safari: date/time inputs collapse or overflow without these */
+  .field input[type="date"], .field input[type="time"] {
+    -webkit-appearance: none; appearance: none; display: block; min-width: 0; min-height: 48px; text-align: left;
+  }
+  .field input::-webkit-date-and-time-value { text-align: left; }
+  .row > .field { min-width: 0; }
+  .field input:focus, .field select:focus, .field textarea:focus, .search:focus { outline: 2px solid var(--brand); outline-offset: 1px; border-color: transparent; }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .seg { display: flex; gap: 6px; flex-wrap: wrap; }
+  .seg label, .pick label {
+    display: inline-flex; align-items: center; border: 1px solid var(--border); background: var(--surface);
+    padding: 9px 13px; border-radius: 999px; font-size: 14px; font-weight: 500; margin: 0; cursor: pointer;
+  }
+  .seg input, .pick input { position: absolute; opacity: 0; pointer-events: none; }
+  .seg label:has(input:checked), .pick label:has(input:checked) { background: var(--brand); color: var(--brand-ink); border-color: var(--brand); }
+  .seg label:has(input:focus-visible), .pick label:has(input:focus-visible) { outline: 2px solid var(--brand); outline-offset: 2px; }
+  .pick { display: flex; flex-wrap: wrap; gap: 8px; }
+  .alert { background: var(--warn-soft); color: var(--warn); padding: 10px 12px; border-radius: 10px; font-size: 14px; margin: -6px 0 16px; }
+  .btn {
+    display: block; width: 100%; padding: 14px; border-radius: 12px; border: 0; font-weight: 700; font-size: 16px;
+    background: var(--brand); color: var(--brand-ink); text-align: center;
+  }
+  .btn.secondary { background: var(--surface-2); color: var(--text); }
+  .btn.danger { background: transparent; color: var(--danger); }
+  .btn + .btn { margin-top: 10px; }
+  .section { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; margin-bottom: 16px; }
+  .section h3 { margin: 0 0 4px; font-size: 16px; }
+  .section p { margin: 0 0 12px; font-size: 14px; color: var(--muted); }
+
+  .toast {
+    position: fixed; left: 50%; bottom: calc(90px + env(safe-area-inset-bottom)); transform: translateX(-50%) translateY(20px);
+    background: var(--text); color: var(--bg); padding: 10px 16px; border-radius: 10px; font-size: 14px;
+    opacity: 0; pointer-events: none; transition: .2s; z-index: 50; max-width: calc(100% - 32px);
+  }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  .backup-nag { background: var(--warn-soft); color: var(--warn); border-radius: 12px; padding: 10px 12px; font-size: 14px; margin-top: 12px; display: flex; justify-content: space-between; gap: 10px; align-items: center; }
+  .backup-nag button { border: 0; background: transparent; color: inherit; font-weight: 700; text-decoration: underline; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap">
+    <div>
+      <h1 id="studioName">VS Makeovers Studio</h1>
+      <p>Appointments</p>
+    </div>
+    <button class="icon-btn" id="openSettings" aria-label="Settings and backup">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+    </button>
+  </div>
+</header>
+
+<main class="wrap">
+  <div class="stats">
+    <div class="stat"><b id="statToday">0</b><span>Today</span></div>
+    <div class="stat"><b id="statWeek">0</b><span>Next 7 days</span></div>
+    <div class="stat"><b id="statDue">₹0</b><span>Balance to collect</span></div>
+  </div>
+
+  <div id="backupNag" class="backup-nag" hidden>
+    <span id="backupNagText">You haven't backed up your bookings yet.</span>
+    <button id="nagBackup">Back up now</button>
+  </div>
+
+  <div id="installTip" class="backup-nag" hidden>
+    <span>Tap <b>Share</b> <span aria-hidden="true">⬆︎</span> then <b>Add to Home Screen</b>. Always open the app from the home screen icon so your bookings stay saved.</span>
+  </div>
+
+  <div class="tabs" role="tablist">
+    <button role="tab" data-view="upcoming" aria-selected="true">Upcoming</button>
+    <button role="tab" data-view="calendar" aria-selected="false">Calendar</button>
+    <button role="tab" data-view="past" aria-selected="false">Past</button>
+  </div>
+
+  <input id="search" class="search" type="search" placeholder="Search name, phone, service…" autocomplete="off">
+
+  <section id="calendarView" hidden>
+    <div class="cal">
+      <div class="cal-head">
+        <button id="calPrev" aria-label="Previous month">‹</button>
+        <h2 id="calTitle"></h2>
+        <button id="calNext" aria-label="Next month">›</button>
+      </div>
+      <div class="cal-grid" id="calGrid"></div>
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center;">
+      <div class="day-head" id="calDayTitle"></div>
+      <button class="link-btn" id="calAdd">+ Add on this day</button>
+    </div>
+  </section>
+
+  <section id="list"></section>
+</main>
+
+<button class="fab" id="newBtn">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+  New booking
+</button>
+
+<!-- Booking form -->
+<dialog id="formDlg">
+  <form id="form" method="dialog" novalidate>
+    <div class="sheet-head">
+      <h2 id="formTitle">New booking</h2>
+      <button type="button" class="icon-btn" data-close aria-label="Close">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+      </button>
+    </div>
+    <div class="sheet-body">
+      <input type="hidden" name="id">
+      <div class="field">
+        <label for="f-name">Client name</label>
+        <input id="f-name" name="name" required autocomplete="off" list="knownClients" placeholder="e.g. Priya Sharma">
+        <datalist id="knownClients"></datalist>
+      </div>
+      <div class="field">
+        <label for="f-phone">Phone number</label>
+        <input id="f-phone" name="phone" type="tel" inputmode="tel" required placeholder="10-digit mobile number">
+      </div>
+      <div class="row">
+        <div class="field">
+          <label for="f-date">Date</label>
+          <input id="f-date" name="date" type="date" required>
+        </div>
+        <div class="field">
+          <label for="f-time">Time <span class="hint">(optional)</span></label>
+          <input id="f-time" name="time" type="time">
+        </div>
+      </div>
+      <div id="clashAlert" class="alert" hidden></div>
+
+      <div class="field">
+        <span class="lbl">Place</span>
+        <div class="seg">
+          <label><input type="radio" name="place" value="studio" checked>Studio</label>
+          <label><input type="radio" name="place" value="home">Client's home</label>
+          <label><input type="radio" name="place" value="venue">Venue / Hotel</label>
+        </div>
+      </div>
+      <div class="field" id="addressField" hidden>
+        <label for="f-address">Address</label>
+        <input id="f-address" name="address" placeholder="House no., area, landmark, city">
+      </div>
+
+      <div class="field">
+        <span class="lbl">Services</span>
+        <div class="pick" id="servicePick"></div>
+      </div>
+
+      <div class="row">
+        <div class="field">
+          <label for="f-total">Total ₹ <span class="hint">(optional)</span></label>
+          <input id="f-total" name="total" type="number" inputmode="numeric" min="0" step="1" placeholder="0">
+        </div>
+        <div class="field">
+          <label for="f-advance">Advance paid ₹</label>
+          <input id="f-advance" name="advance" type="number" inputmode="numeric" min="0" step="1" placeholder="0">
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="f-notes">Notes <span class="hint">(optional)</span></label>
+        <textarea id="f-notes" name="notes" rows="3" placeholder="Outfit colour, number of people, skin type, reference look…"></textarea>
+      </div>
+
+      <div class="field" id="statusField" hidden>
+        <label for="f-status">Status</label>
+        <select id="f-status" name="status">
+          <option value="upcoming">Upcoming</option>
+          <option value="done">Done</option>
+          <option value="cancelled">Cancelled</option>
+        </select>
+      </div>
+
+      <button type="submit" class="btn" id="saveBtn">Save booking</button>
+      <button type="button" class="btn danger" id="deleteBtn" hidden>Delete booking</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Settings -->
+<dialog id="settingsDlg">
+  <div class="sheet-head">
+    <h2>Settings &amp; backup</h2>
+    <button type="button" class="icon-btn" data-close aria-label="Close">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+    </button>
+  </div>
+  <div class="sheet-body">
+    <div class="section">
+      <h3>Backup</h3>
+      <p id="backupInfo">Your bookings are saved only on this phone. Save a backup file regularly (to WhatsApp, Google Drive or email) so they're safe if the phone is lost or the browser is cleared.</p>
+      <button class="btn" id="exportJson">Save backup file</button>
+      <button class="btn secondary" id="importBtn">Restore from backup file</button>
+      <button class="btn secondary" id="exportCsv">Download as Excel sheet (CSV)</button>
+      <input type="file" id="importFile" accept=".json,application/json" hidden>
+    </div>
+
+    <div class="section">
+      <h3>Services</h3>
+      <p>One per line. These show up as quick choices in the booking form.</p>
+      <div class="field" style="margin-bottom:12px">
+        <textarea id="servicesText" rows="9" aria-label="Services list"></textarea>
+      </div>
+      <button class="btn secondary" id="saveServices">Save services</button>
+    </div>
+
+    <div class="section">
+      <h3>WhatsApp reminder message</h3>
+      <p>Sent when you tap WhatsApp on a booking. You can use {name}, {date}, {time}, {services} and {place}.</p>
+      <div class="field" style="margin-bottom:12px">
+        <textarea id="waText" rows="5" aria-label="WhatsApp message template"></textarea>
+      </div>
+      <button class="btn secondary" id="saveWa">Save message</button>
+    </div>
+  </div>
+</dialog>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+(() => {
+  const APPT_KEY = 'vs-appointments-v1';
+  const SET_KEY = 'vs-settings-v1';
+  const STUDIO_MAP = 'https://maps.app.goo.gl/5QkGNU2roM6H1YyL9';
+  const PLACES = { studio: 'Studio', home: "Client's home", venue: 'Venue / Hotel' };
+  const DEFAULT_SERVICES = [
+    'Bridal makeup', 'Engagement makeup', 'Reception makeup', 'Party makeup',
+    'HD makeup', 'Airbrush makeup', 'Hairstyling', 'Saree draping', 'Mehendi', 'Pre-wedding shoot'
+  ];
+  const DEFAULT_WA = "Hi {name}, this is Varsha from VS Makeovers Studio 💄\nJust a reminder of your {services} appointment on {date}{time}.\nPlace: {place}\nSee you soon!";
+
+  // ---------- storage ----------
+  function load(key, fallback) {
+    try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; }
+    catch { return fallback; }
+  }
+  function save(key, value) {
+    try { localStorage.setItem(key, JSON.stringify(value)); return true; }
+    catch { toast('Could not save on this device. Please make a backup.'); return false; }
+  }
+  if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
+
+  let appts = load(APPT_KEY, []);
+  if (!Array.isArray(appts)) appts = [];
+  const settings = Object.assign(
+    { services: DEFAULT_SERVICES, waTemplate: DEFAULT_WA, lastBackup: null },
+    load(SET_KEY, {})
+  );
+  const persist = () => save(APPT_KEY, appts);
+  const persistSettings = () => save(SET_KEY, settings);
+
+  // ---------- helpers ----------
+  const $ = (s, el = document) => el.querySelector(s);
+  const pad = n => String(n).padStart(2, '0');
+  const ymd = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  const parseYmd = s => { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d); };
+  const todayStr = () => ymd(new Date());
+  const addDays = (s, n) => { const d = parseYmd(s); d.setDate(d.getDate() + n); return ymd(d); };
+  const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const money = n => '₹' + Math.round(Number(n) || 0).toLocaleString('en-IN');
+  const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+  const digits = p => String(p || '').replace(/\D/g, '');
+  function intlPhone(p) {
+    let d = digits(p);
+    if (d.length === 11 && d.startsWith('0')) d = d.slice(1);
+    if (d.length === 10) d = '91' + d;
+    return d;
+  }
+  function fmtTime(t) {
+    if (!t) return '';
+    const [h, m] = t.split(':').map(Number);
+    return `${h % 12 || 12}:${pad(m)} ${h < 12 ? 'AM' : 'PM'}`;
+  }
+  function fmtDate(s, { relative = true } = {}) {
+    const t = todayStr();
+    if (relative && s === t) return 'Today';
+    if (relative && s === addDays(t, 1)) return 'Tomorrow';
+    if (relative && s === addDays(t, -1)) return 'Yesterday';
+    const d = parseYmd(s);
+    const opts = { weekday: 'short', day: 'numeric', month: 'short' };
+    if (d.getFullYear() !== new Date().getFullYear()) opts.year = 'numeric';
+    return d.toLocaleDateString('en-IN', opts);
+  }
+  const balance = a => Math.max(0, (Number(a.total) || 0) - (Number(a.advance) || 0));
+  const sortAsc = (a, b) => (a.date + (a.time || '99:99')).localeCompare(b.date + (b.time || '99:99'));
+  const placeText = a => a.place === 'studio' ? 'Studio, Govindpuram' : `${PLACES[a.place] || 'Place'}${a.address ? ': ' + a.address : ''}`;
+  const mapUrl = a => a.place === 'studio' ? STUDIO_MAP
+    : a.address ? 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(a.address) : '';
+
+  let toastTimer;
+  function toast(msg) {
+    const el = $('#toast');
+    el.textContent = msg;
+    el.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => el.classList.remove('show'), 2400);
+  }
+
+  // ---------- state ----------
+  let view = 'upcoming';
+  let query = '';
+  let calMonth = (() => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1); })();
+  let calSel = todayStr();
+
+  function matches(a) {
+    if (!query) return true;
+    const q = query.toLowerCase();
+    const hay = [a.name, a.phone, a.address, a.notes, ...(a.services || []), PLACES[a.place]].join(' ').toLowerCase();
+    return hay.includes(q) || (digits(q) && digits(a.phone).includes(digits(q)));
+  }
+
+  // ---------- rendering ----------
+  const ICONS = {
+    call: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.8 19.8 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.9.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg>',
+    wa: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.4 8.4 0 0 1-12.4 7.4L3 21l2.1-5.5A8.4 8.4 0 1 1 21 11.5z"/></svg>',
+    map: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>',
+    edit: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>',
+    check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>'
+  };
+
+  function cardHtml(a) {
+    const bal = balance(a);
+    const map = mapUrl(a);
+    const status = a.status || 'upcoming';
+    const badge = status === 'done' ? '<span class="badge done">Done</span>'
+      : status === 'cancelled' ? '<span class="badge cancelled">Cancelled</span>'
+      : bal > 0 ? `<span class="badge due">${money(bal)} due</span>` : '';
+    const pay = (Number(a.total) || Number(a.advance))
+      ? `<div class="meta">Total <strong>${money(a.total)}</strong> · Advance <strong>${money(a.advance)}</strong>${bal ? ` · Balance <strong>${money(bal)}</strong>` : ' · Fully paid'}</div>` : '';
+    const showDone = status === 'upcoming';
+    return `
+      <article class="card ${status}">
+        <div class="card-top">
+          <div class="time">${a.time ? fmtTime(a.time) : 'Any time'}</div>
+          <div class="who">
+            <div style="display:flex;gap:8px;align-items:center;justify-content:space-between">
+              <h3>${esc(a.name)}</h3>${badge}
+            </div>
+            <div class="phone">${esc(a.phone)}</div>
+            ${a.services && a.services.length ? `<div class="chips">${a.services.map(s => `<span class="chip">${esc(s)}</span>`).join('')}</div>` : ''}
+          </div>
+        </div>
+        <div class="meta">📍 ${esc(placeText(a))}</div>
+        ${pay}
+        ${a.notes ? `<div class="notes">${esc(a.notes)}</div>` : ''}
+        <div class="actions">
+          <a href="tel:+${intlPhone(a.phone)}">${ICONS.call}Call</a>
+          <a href="https://wa.me/${intlPhone(a.phone)}?text=${encodeURIComponent(waMessage(a))}" target="_blank" rel="noopener">${ICONS.wa}WhatsApp</a>
+          ${map ? `<a href="${map}" target="_blank" rel="noopener">${ICONS.map}Map</a>` : ''}
+          ${showDone ? `<button class="done-btn" data-act="done" data-id="${a.id}">${ICONS.check}Done</button>` : ''}
+          <button data-act="edit" data-id="${a.id}">${ICONS.edit}Edit</button>
+        </div>
+      </article>`;
+  }
+
+  function groupedHtml(items) {
+    const t = todayStr();
+    let html = '', last = null;
+    for (const a of items) {
+      if (a.date !== last) {
+        last = a.date;
+        html += `<div class="day-head ${a.date === t ? 'today' : ''}">${esc(fmtDate(a.date))}${fmtDate(a.date) !== fmtDate(a.date, { relative: false }) ? ' · ' + esc(fmtDate(a.date, { relative: false })) : ''}</div>`;
+      }
+      html += cardHtml(a);
+    }
+    return html;
+  }
+
+  function emptyHtml(title, sub) {
+    return `<div class="empty"><b>${title}</b>${sub}</div>`;
+  }
+
+  function renderStats() {
+    const t = todayStr(), wk = addDays(t, 7);
+    const live = appts.filter(a => (a.status || 'upcoming') === 'upcoming');
+    $('#statToday').textContent = live.filter(a => a.date === t).length;
+    $('#statWeek').textContent = live.filter(a => a.date >= t && a.date < wk).length;
+    $('#statDue').textContent = money(appts.filter(a => a.status !== 'cancelled').reduce((s, a) => s + balance(a), 0));
+  }
+
+  function renderBackupNag() {
+    const nag = $('#backupNag');
+    if (appts.length < 3) { nag.hidden = true; return; }
+    const last = settings.lastBackup ? new Date(settings.lastBackup) : null;
+    const days = last ? Math.floor((Date.now() - last) / 864e5) : null;
+    if (last && days < 7) { nag.hidden = true; return; }
+    $('#backupNagText').textContent = last ? `Last backup was ${days} days ago.` : "You haven't backed up your bookings yet.";
+    nag.hidden = false;
+  }
+
+  function renderCalendar() {
+    const y = calMonth.getFullYear(), m = calMonth.getMonth();
+    $('#calTitle').textContent = calMonth.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
+    const counts = {};
+    for (const a of appts) if (a.status !== 'cancelled' && matches(a)) counts[a.date] = (counts[a.date] || 0) + 1;
+    const start = new Date(y, m, 1 - new Date(y, m, 1).getDay());
+    const t = todayStr();
+    let html = ['S', 'M', 'T', 'W', 'T', 'F', 'S'].map(d => `<div class="wd">${d}</div>`).join('');
+    for (let i = 0; i < 42; i++) {
+      const d = new Date(start); d.setDate(start.getDate() + i);
+      const s = ymd(d);
+      const cls = [d.getMonth() !== m && 'out', s === t && 'is-today', s === calSel && 'sel'].filter(Boolean).join(' ');
+      const label = `${d.toLocaleDateString('en-IN', { day: 'numeric', month: 'long' })}${counts[s] ? `, ${counts[s]} booking${counts[s] > 1 ? 's' : ''}` : ''}`;
+      html += `<button class="${cls}" data-day="${s}" aria-label="${label}">${d.getDate()}${counts[s] ? `<span class="count">${counts[s]}</span>` : ''}</button>`;
+      if (i === 34 && new Date(start.getFullYear(), start.getMonth(), start.getDate() + 35).getMonth() !== m) break;
+    }
+    $('#calGrid').innerHTML = html;
+    $('#calDayTitle').textContent = fmtDate(calSel) === fmtDate(calSel, { relative: false })
+      ? fmtDate(calSel) : `${fmtDate(calSel)} · ${fmtDate(calSel, { relative: false })}`;
+    const items = appts.filter(a => a.date === calSel && matches(a)).sort(sortAsc);
+    $('#list').innerHTML = items.length ? items.map(cardHtml).join('') : emptyHtml('No bookings this day', '');
+  }
+
+  function render() {
+    renderStats();
+    renderBackupNag();
+    document.querySelectorAll('.tabs button').forEach(b => b.setAttribute('aria-selected', b.dataset.view === view));
+    $('#calendarView').hidden = view !== 'calendar';
+    if (view === 'calendar') return renderCalendar();
+
+    const t = todayStr();
+    let items;
+    if (view === 'upcoming') {
+      items = appts.filter(a => (a.status || 'upcoming') === 'upcoming' && a.date >= t && matches(a)).sort(sortAsc);
+      // Past bookings never marked done come first, so nothing slips through.
+      const overdue = appts.filter(a => (a.status || 'upcoming') === 'upcoming' && a.date < t && matches(a)).sort(sortAsc);
+      let html = '';
+      if (overdue.length) html += `<div class="day-head" style="color:var(--warn)">Earlier, not marked done (${overdue.length})</div>` + overdue.map(cardHtml).join('');
+      html += groupedHtml(items);
+      $('#list').innerHTML = html || (query
+        ? emptyHtml('No matches', 'Try a different name or number.')
+        : emptyHtml('No upcoming bookings', 'Tap <b style="display:inline;color:var(--brand)">New booking</b> to add one.'));
+    } else {
+      items = appts.filter(a => (a.status || 'upcoming') !== 'upcoming' && matches(a))
+        .sort((a, b) => sortAsc(b, a));
+      $('#list').innerHTML = items.length ? groupedHtml(items) : emptyHtml(query ? 'No matches' : 'Nothing here yet', query ? '' : 'Finished and cancelled bookings show up here.');
+    }
+  }
+
+  // ---------- WhatsApp ----------
+  function waMessage(a) {
+    return (settings.waTemplate || DEFAULT_WA)
+      .replaceAll('{name}', (a.name || '').split(' ')[0])
+      .replaceAll('{date}', fmtDate(a.date, { relative: false }))
+      .replaceAll('{time}', a.time ? ' at ' + fmtTime(a.time) : '')
+      .replaceAll('{services}', (a.services || []).join(', ') || 'makeup')
+      .replaceAll('{place}', a.place === 'studio' ? `VS Makeovers Studio, H-block Govindpuram, Ghaziabad (${STUDIO_MAP})` : placeText(a));
+  }
+
+  // ---------- form ----------
+  const formDlg = $('#formDlg'), form = $('#form');
+
+  function renderServicePick(selected = []) {
+    const all = [...settings.services];
+    for (const s of selected) if (!all.includes(s)) all.push(s);
+    $('#servicePick').innerHTML = all.map(s =>
+      `<label><input type="checkbox" name="services" value="${esc(s)}" ${selected.includes(s) ? 'checked' : ''}>${esc(s)}</label>`).join('');
+  }
+
+  function openForm(a, presetDate) {
+    form.reset();
+    const editing = !!a;
+    a = a || { place: 'studio', date: presetDate || todayStr(), services: [] };
+    $('#formTitle').textContent = editing ? 'Edit booking' : 'New booking';
+    form.id.value = a.id || '';
+    form.name.value = a.name || '';
+    form.phone.value = a.phone || '';
+    form.date.value = a.date || '';
+    form.time.value = a.time || '';
+    form.querySelector(`input[name=place][value="${a.place || 'studio'}"]`).checked = true;
+    form.address.value = a.address || '';
+    form.total.value = a.total || '';
+    form.advance.value = a.advance || '';
+    form.notes.value = a.notes || '';
+    form.status.value = a.status || 'upcoming';
+    $('#statusField').hidden = !editing;
+    $('#deleteBtn').hidden = !editing;
+    renderServicePick(a.services || []);
+    const names = [...new Map(appts.map(x => [x.name.toLowerCase(), x])).values()];
+    $('#knownClients').innerHTML = names.map(x => `<option value="${esc(x.name)}">${esc(x.phone)}</option>`).join('');
+    syncAddress();
+    checkClash();
+    formDlg.showModal();
+    if (!editing) setTimeout(() => form.name.focus(), 50);
+  }
+
+  function syncAddress() {
+    const place = form.querySelector('input[name=place]:checked').value;
+    $('#addressField').hidden = place === 'studio';
+  }
+
+  function checkClash() {
+    const el = $('#clashAlert');
+    const date = form.date.value, time = form.time.value, id = form.id.value;
+    const sameDay = appts.filter(a => a.date === date && a.id !== id && (a.status || 'upcoming') === 'upcoming');
+    if (!date || !sameDay.length) { el.hidden = true; return; }
+    const toMin = t => { const [h, m] = t.split(':').map(Number); return h * 60 + m; };
+    const near = time ? sameDay.filter(a => a.time && Math.abs(toMin(a.time) - toMin(time)) < 120) : [];
+    if (near.length) {
+      el.textContent = `Heads up: ${near.map(a => `${a.name} at ${fmtTime(a.time)}`).join(', ')} is within 2 hours of this time.`;
+    } else {
+      el.textContent = `Already booked this day: ${sameDay.sort(sortAsc).map(a => `${a.name}${a.time ? ' (' + fmtTime(a.time) + ')' : ''}`).join(', ')}.`;
+    }
+    el.hidden = false;
+  }
+
+  form.addEventListener('change', e => {
+    if (e.target.name === 'place') syncAddress();
+    if (e.target.name === 'date' || e.target.name === 'time') checkClash();
+  });
+  form.name.addEventListener('change', () => {
+    const match = appts.find(a => a.name.toLowerCase() === form.name.value.trim().toLowerCase());
+    if (match && !form.phone.value) form.phone.value = match.phone;
+  });
+
+  form.addEventListener('submit', e => {
+    e.preventDefault();
+    const name = form.name.value.trim();
+    const phone = form.phone.value.trim();
+    if (!name) { toast('Please enter the client name'); form.name.focus(); return; }
+    if (digits(phone).length < 10) { toast('Please enter a valid phone number'); form.phone.focus(); return; }
+    if (!form.date.value) { toast('Please choose a date'); form.date.focus(); return; }
+    const place = form.querySelector('input[name=place]:checked').value;
+    const id = form.id.value;
+    const prev = appts.find(a => a.id === id);
+    const rec = {
+      id: id || uid(),
+      name, phone,
+      date: form.date.value,
+      time: form.time.value,
+      place,
+      address: place === 'studio' ? '' : form.address.value.trim(),
+      services: [...form.querySelectorAll('input[name=services]:checked')].map(i => i.value),
+      total: Number(form.total.value) || 0,
+      advance: Number(form.advance.value) || 0,
+      notes: form.notes.value.trim(),
+      status: prev ? form.status.value : 'upcoming',
+      createdAt: prev ? prev.createdAt : new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+    if (prev) Object.assign(prev, rec); else appts.push(rec);
+    persist();
+    formDlg.close();
+    toast(prev ? 'Booking updated' : 'Booking saved');
+    if (view === 'calendar') { calSel = rec.date; const d = parseYmd(rec.date); calMonth = new Date(d.getFullYear(), d.getMonth(), 1); }
+    render();
+  });
+
+  $('#deleteBtn').addEventListener('click', () => {
+    const id = form.id.value;
+    const a = appts.find(x => x.id === id);
+    if (!a || !confirm(`Delete the booking for ${a.name} on ${fmtDate(a.date, { relative: false })}?`)) return;
+    appts = appts.filter(x => x.id !== id);
+    persist();
+    formDlg.close();
+    toast('Booking deleted');
+    render();
+  });
+
+  // ---------- list actions ----------
+  document.addEventListener('click', e => {
+    const btn = e.target.closest('[data-act]');
+    if (btn) {
+      const a = appts.find(x => x.id === btn.dataset.id);
+      if (!a) return;
+      if (btn.dataset.act === 'edit') openForm(a);
+      if (btn.dataset.act === 'done') {
+        a.status = 'done'; a.updatedAt = new Date().toISOString(); persist(); render();
+        toast(balance(a) ? `Marked done. ${money(balance(a))} still to collect.` : 'Marked done');
+      }
+      return;
+    }
+    const day = e.target.closest('[data-day]');
+    if (day) {
+      calSel = day.dataset.day;
+      const d = parseYmd(calSel);
+      if (d.getMonth() !== calMonth.getMonth()) calMonth = new Date(d.getFullYear(), d.getMonth(), 1);
+      render();
+      return;
+    }
+    if (e.target.closest('[data-close]')) e.target.closest('dialog').close();
+  });
+
+  document.querySelectorAll('.tabs button').forEach(b => b.addEventListener('click', () => { view = b.dataset.view; render(); }));
+  $('#search').addEventListener('input', e => { query = e.target.value.trim(); render(); });
+  $('#newBtn').addEventListener('click', () => openForm(null, view === 'calendar' ? calSel : undefined));
+  $('#calAdd').addEventListener('click', () => openForm(null, calSel));
+  $('#calPrev').addEventListener('click', () => { calMonth = new Date(calMonth.getFullYear(), calMonth.getMonth() - 1, 1); render(); });
+  $('#calNext').addEventListener('click', () => { calMonth = new Date(calMonth.getFullYear(), calMonth.getMonth() + 1, 1); render(); });
+
+  // ---------- settings & backup ----------
+  const settingsDlg = $('#settingsDlg');
+  function openSettings() {
+    $('#servicesText').value = settings.services.join('\n');
+    $('#waText').value = settings.waTemplate;
+    const last = settings.lastBackup ? new Date(settings.lastBackup).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }) : 'never';
+    $('#backupInfo').textContent = `Your bookings are saved only on this phone. Save a backup file regularly (send it to yourself on WhatsApp, Google Drive or email) so nothing is lost if the phone is changed or the browser is cleared. Last backup: ${last}.`;
+    settingsDlg.showModal();
+  }
+  $('#openSettings').addEventListener('click', openSettings);
+  $('#nagBackup').addEventListener('click', openSettings);
+
+  // On iPhone this opens the share sheet (WhatsApp, Files, Drive, Mail…); elsewhere it downloads.
+  // Returns true once the file was shared or downloaded, false if the person cancelled.
+  async function saveFile(name, text, type) {
+    const file = new File([text], name, { type });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      try { await navigator.share({ files: [file], title: name }); return true; }
+      catch (err) { if (err.name === 'AbortError') return false; }
+    }
+    const url = URL.createObjectURL(file);
+    const a = Object.assign(document.createElement('a'), { href: url, download: name });
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    return true;
+  }
+
+  $('#exportJson').addEventListener('click', async () => {
+    const ok = await saveFile(`vs-bookings-backup-${todayStr()}.json`, JSON.stringify({ app: 'vs-appointments', version: 1, exportedAt: new Date().toISOString(), appointments: appts, settings: { services: settings.services, waTemplate: settings.waTemplate } }, null, 2), 'application/json');
+    if (!ok) return;
+    settings.lastBackup = new Date().toISOString();
+    persistSettings();
+    renderBackupNag();
+    toast('Backup saved');
+  });
+
+  $('#exportCsv').addEventListener('click', () => {
+    const cols = ['Date', 'Time', 'Name', 'Phone', 'Place', 'Address', 'Services', 'Total', 'Advance', 'Balance', 'Status', 'Notes'];
+    const q = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    const rows = [...appts].sort(sortAsc).map(a => [a.date, fmtTime(a.time), a.name, a.phone, PLACES[a.place], a.address, (a.services || []).join(', '), a.total, a.advance, balance(a), a.status, a.notes].map(q).join(','));
+    saveFile(`vs-bookings-${todayStr()}.csv`, '﻿' + [cols.map(q).join(','), ...rows].join('\r\n'), 'text/csv');
+  });
+
+  $('#importBtn').addEventListener('click', () => $('#importFile').click());
+  $('#importFile').addEventListener('change', async e => {
+    const file = e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+    try {
+      const data = JSON.parse(await file.text());
+      const incoming = Array.isArray(data) ? data : data.appointments;
+      if (!Array.isArray(incoming)) throw new Error('bad file');
+      let added = 0, updated = 0;
+      for (const r of incoming) {
+        if (!r || !r.id || !r.name || !r.date) continue;
+        const cur = appts.find(a => a.id === r.id);
+        if (!cur) { appts.push(r); added++; }
+        else if ((r.updatedAt || '') > (cur.updatedAt || '')) { Object.assign(cur, r); updated++; }
+      }
+      if (data.settings && Array.isArray(data.settings.services)) settings.services = data.settings.services;
+      if (data.settings && data.settings.waTemplate) settings.waTemplate = data.settings.waTemplate;
+      persist(); persistSettings();
+      settingsDlg.close();
+      render();
+      toast(`Restored: ${added} new, ${updated} updated`);
+    } catch {
+      toast("That file doesn't look like a VS backup");
+    }
+  });
+
+  $('#saveServices').addEventListener('click', () => {
+    const list = [...new Set($('#servicesText').value.split('\n').map(s => s.trim()).filter(Boolean))];
+    settings.services = list.length ? list : DEFAULT_SERVICES;
+    persistSettings();
+    toast('Services saved');
+  });
+  $('#saveWa').addEventListener('click', () => {
+    settings.waTemplate = $('#waText').value.trim() || DEFAULT_WA;
+    persistSettings();
+    toast('Message saved');
+  });
+
+  // Re-render at midnight / when the app comes back to the foreground so "Today" stays right.
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) render(); });
+
+  // iPhone keeps Safari-tab data and home-screen-app data apart, and can clear Safari-tab data
+  // after 7 days unused. Nudge her to use the installed app.
+  const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const standalone = navigator.standalone || matchMedia('(display-mode: standalone)').matches;
+  $('#installTip').hidden = !(isIOS && !standalone);
+
+  if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  }
+
+  render();
+})();
+</script>
+</body>
+</html>
