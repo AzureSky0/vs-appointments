@@ -458,6 +458,7 @@
       <h3>Keep your bookings safe ⚠️</h3>
       <p>Bookings are saved <b>only on this phone</b>. Always open the app from the <b>VS icon on your home screen</b>, not from Safari.</p>
       <p>Once a week, tap ⚙️ → <b>Save backup file</b> and send it to yourself on WhatsApp or save it to Files. If you get a new phone, add the app again and tap ⚙️ → <b>Restore from backup file</b>.</p>
+      <p>Restoring <b>adds</b> the bookings from the file to the ones already on this phone. A booking you deleted after making that backup will come back, so just delete it again.</p>
     </div>
     <div class="section">
       <h3>Excel sheet</h3>
@@ -482,8 +483,13 @@
 
   // ---------- storage ----------
   function load(key, fallback) {
-    try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; }
-    catch { return fallback; }
+    let raw = null;
+    try { raw = localStorage.getItem(key); return raw ? JSON.parse(raw) : fallback; }
+    catch {
+      // Keep unreadable data aside instead of letting the next save overwrite it.
+      if (raw) { try { localStorage.setItem(`${key}-rescue-${Date.now()}`, raw); } catch {} }
+      return fallback;
+    }
   }
   function save(key, value) {
     try { localStorage.setItem(key, JSON.stringify(value)); return true; }
@@ -491,12 +497,47 @@
   }
   if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
 
-  let appts = load(APPT_KEY, []);
-  if (!Array.isArray(appts)) appts = [];
+  // Every booking from storage or a backup file passes through here, so bad data can't break the app.
+  const STATUSES = ['upcoming', 'done', 'cancelled'];
+  function normalise(r) {
+    if (!r || typeof r !== 'object') return null;
+    const id = String(r.id ?? ''), date = String(r.date ?? ''), name = String(r.name ?? '').trim();
+    if (!/^[\w-]{1,64}$/.test(id) || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !name) return null;
+    return {
+      id, name, date,
+      time: /^\d{2}:\d{2}$/.test(r.time) ? r.time : '',
+      phone: String(r.phone ?? ''),
+      place: ['studio', 'home', 'venue'].includes(r.place) ? r.place : 'studio',
+      address: String(r.address ?? ''),
+      services: Array.isArray(r.services) ? r.services.map(String) : [],
+      total: Math.max(0, Number(r.total) || 0),
+      advance: Math.max(0, Number(r.advance) || 0),
+      notes: String(r.notes ?? ''),
+      status: STATUSES.includes(r.status) ? r.status : 'upcoming',
+      createdAt: String(r.createdAt ?? ''),
+      updatedAt: String(r.updatedAt ?? '')
+    };
+  }
+  const storedAppts = load(APPT_KEY, []);
+  let appts = Array.isArray(storedAppts) ? storedAppts.map(normalise).filter(Boolean) : [];
+  // Records that can't be repaired are kept aside (not deleted) so a developer can recover them.
+  const unusable = Array.isArray(storedAppts) ? storedAppts.filter(r => !normalise(r)) : (storedAppts ? [storedAppts] : []);
+  if (unusable.length) {
+    try {
+      localStorage.setItem(`${APPT_KEY}-rescue-${Date.now()}`, JSON.stringify(unusable));
+      localStorage.setItem(APPT_KEY, JSON.stringify(appts)); // save the cleaned list so this happens only once
+    } catch {}
+  }
+
+  const storedSettings = load(SET_KEY, {});
   const settings = Object.assign(
     { services: DEFAULT_SERVICES, waTemplate: DEFAULT_WA, lastBackup: null },
-    load(SET_KEY, {})
+    storedSettings && typeof storedSettings === 'object' ? storedSettings : {}
   );
+  settings.services = Array.isArray(settings.services) && settings.services.length
+    ? settings.services.map(String).filter(Boolean) : DEFAULT_SERVICES;
+  if (typeof settings.waTemplate !== 'string' || !settings.waTemplate.trim()) settings.waTemplate = DEFAULT_WA;
+  if (typeof settings.lastBackup !== 'string' || isNaN(new Date(settings.lastBackup))) settings.lastBackup = null;
   const persist = () => save(APPT_KEY, appts);
   const persistSettings = () => save(SET_KEY, settings);
 
@@ -580,7 +621,7 @@
       ? `<div class="meta">Total <strong>${money(a.total)}</strong> · Advance <strong>${money(a.advance)}</strong>${bal ? ` · Balance <strong>${money(bal)}</strong>` : ' · Fully paid'}</div>` : '';
     const showDone = status === 'upcoming';
     return `
-      <article class="card ${status}">
+      <article class="card ${esc(status)}">
         <div class="card-top">
           <div class="time">${a.time ? fmtTime(a.time) : 'Any time'}</div>
           <div class="who">
@@ -598,8 +639,8 @@
           <a href="tel:+${intlPhone(a.phone)}">${ICONS.call}Call</a>
           <a href="https://wa.me/${intlPhone(a.phone)}?text=${encodeURIComponent(waMessage(a))}" target="_blank" rel="noopener">${ICONS.wa}WhatsApp</a>
           ${map ? `<a href="${map}" target="_blank" rel="noopener">${ICONS.map}Map</a>` : ''}
-          ${showDone ? `<button class="done-btn" data-act="done" data-id="${a.id}">${ICONS.check}Done</button>` : ''}
-          <button data-act="edit" data-id="${a.id}">${ICONS.edit}Edit</button>
+          ${showDone ? `<button class="done-btn" data-act="done" data-id="${esc(a.id)}">${ICONS.check}Done</button>` : ''}
+          <button data-act="edit" data-id="${esc(a.id)}">${ICONS.edit}Edit</button>
         </div>
       </article>`;
   }
@@ -771,6 +812,8 @@
     if (!name) { toast('Please enter the client name'); form.name.focus(); return; }
     if (digits(phone).length < 10) { toast('Please enter a valid phone number'); form.phone.focus(); return; }
     if (!form.date.value) { toast('Please choose a date'); form.date.focus(); return; }
+    if (Number(form.total.value) < 0 || Number(form.advance.value) < 0) { toast('Amounts cannot be negative'); return; }
+    if (Number(form.total.value) && Number(form.advance.value) > Number(form.total.value)) { toast('Advance is more than the total'); form.advance.focus(); return; }
     const place = form.querySelector('input[name=place]:checked').value;
     const id = form.id.value;
     const prev = appts.find(a => a.id === id);
@@ -877,7 +920,8 @@
 
   $('#exportCsv').addEventListener('click', () => {
     const cols = ['Date', 'Time', 'Name', 'Phone', 'Place', 'Address', 'Services', 'Total', 'Advance', 'Balance', 'Status', 'Notes'];
-    const q = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    // A leading = + - @ makes Excel treat the cell as a formula, so prefix those with an apostrophe.
+    const q = v => { let s = String(v ?? ''); if (/^[=+\-@\t\r]/.test(s)) s = "'" + s; return `"${s.replace(/"/g, '""')}"`; };
     const rows = [...appts].sort(sortAsc).map(a => [a.date, fmtTime(a.time), a.name, a.phone, PLACES[a.place], a.address, (a.services || []).join(', '), a.total, a.advance, balance(a), a.status, a.notes].map(q).join(','));
     saveFile(`vs-bookings-${todayStr()}.csv`, '﻿' + [cols.map(q).join(','), ...rows].join('\r\n'), 'text/csv');
   });
@@ -891,19 +935,22 @@
       const data = JSON.parse(await file.text());
       const incoming = Array.isArray(data) ? data : data.appointments;
       if (!Array.isArray(incoming)) throw new Error('bad file');
-      let added = 0, updated = 0;
-      for (const r of incoming) {
-        if (!r || !r.id || !r.name || !r.date) continue;
+      // Never trust a file's contents: every record is checked and cleaned by normalise().
+      let added = 0, updated = 0, skipped = 0;
+      for (const raw of incoming) {
+        const r = normalise(raw);
+        if (!r) { skipped++; continue; }
         const cur = appts.find(a => a.id === r.id);
         if (!cur) { appts.push(r); added++; }
         else if ((r.updatedAt || '') > (cur.updatedAt || '')) { Object.assign(cur, r); updated++; }
       }
-      if (data.settings && Array.isArray(data.settings.services)) settings.services = data.settings.services;
-      if (data.settings && data.settings.waTemplate) settings.waTemplate = data.settings.waTemplate;
+      const s = data.settings;
+      if (s && Array.isArray(s.services) && s.services.length) settings.services = s.services.map(String).filter(Boolean);
+      if (s && typeof s.waTemplate === 'string' && s.waTemplate.trim()) settings.waTemplate = s.waTemplate;
       persist(); persistSettings();
       settingsDlg.close();
       render();
-      toast(`Restored: ${added} new, ${updated} updated`);
+      toast(`Restored: ${added} new, ${updated} updated${skipped ? `, ${skipped} skipped (damaged)` : ''}`);
     } catch {
       toast("That file doesn't look like a VS backup");
     }

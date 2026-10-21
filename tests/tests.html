@@ -1,0 +1,626 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>VS Appointments tests</title>
+<style>
+  body { font: 13px/1.4 system-ui, sans-serif; margin: 0; display: flex; gap: 12px; }
+  iframe { border: 0; flex: none; }
+  pre { margin: 8px; white-space: pre-wrap; }
+  .fail { color: #b3261e; } .pass { color: #2f7d5b; }
+</style>
+</head>
+<body>
+<iframe id="frame" width="375" height="812"></iframe>
+<pre id="out">running…</pre>
+<script>
+/*
+ * End-to-end tests for the VS Appointments app. Loads the app in a 375px (iPhone) iframe
+ * on the same origin and drives it like a user. Run via run_tests.py.
+ *   tests.html?app=/index.html[&pwa=1][&modes=1]
+ */
+// These tests erase the app's saved data. This file is also published on the live site, so
+// refuse to run anywhere except a local test server.
+if (!['localhost', '127.0.0.1'].includes(location.hostname)) {
+  document.getElementById('out').textContent = 'These tests erase app data, so they only run on your own computer: python tests/run_tests.py';
+  throw new Error('tests only run on localhost');
+}
+const params = new URLSearchParams(location.search);
+const APP = params.get('app');
+const CHECK_PWA = params.get('pwa') === '1';
+const STUDIO_MAP = 'https://maps.app.goo.gl/5QkGNU2roM6H1YyL9';
+
+const results = [];
+const jsErrors = [];
+let group = '';
+let W, D, captured = [];
+
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const pad = n => String(n).padStart(2, '0');
+const ymd = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+const day = n => { const d = new Date(); d.setDate(d.getDate() + n); return ymd(d); };
+const TODAY = day(0);
+
+function check(name, ok, detail = '') {
+  if (params.get('verbose')) fetch('/__log?' + encodeURIComponent((ok ? 'ok   ' : 'FAIL ') + name));
+  results.push({ name: `${group}: ${name}`, ok: !!ok, detail: ok ? '' : String(detail) });
+}
+const $ = s => D.querySelector(s);
+const $$ = s => [...D.querySelectorAll(s)];
+const stored = () => JSON.parse(localStorage.getItem('vs-appointments-v1') || '[]');
+const storedSettings = () => JSON.parse(localStorage.getItem('vs-settings-v1') || '{}');
+const toastText = () => $('#toast').textContent;
+const visible = el => !!el && !el.hidden && el.getClientRects().length > 0;
+
+async function load({ appts, settings, keep } = {}) {
+  if (!keep) localStorage.clear();
+  if (appts) localStorage.setItem('vs-appointments-v1', JSON.stringify(appts));
+  if (settings) localStorage.setItem('vs-settings-v1', JSON.stringify(settings));
+  const f = document.getElementById('frame');
+  await new Promise(res => { f.onload = res; f.src = APP + '?t=' + Date.now(); });
+  W = f.contentWindow; D = f.contentDocument;
+  W.addEventListener('error', e => jsErrors.push(`${group}: ${e.message}`));
+  W.addEventListener('unhandledrejection', e => jsErrors.push(`${group}: ${e.reason}`));
+  W.confirm = () => true;
+  Object.defineProperty(W.navigator, 'canShare', { value: () => false, configurable: true });
+  captured = [];
+  W.URL.createObjectURL = blob => { captured.push(blob); return 'about:blank'; };
+  W.URL.revokeObjectURL = () => {};
+  // Don't let download links navigate the test frame; the file content is already captured above.
+  const realClick = W.HTMLAnchorElement.prototype.click;
+  W.HTMLAnchorElement.prototype.click = function () { if (!this.hasAttribute('download')) realClick.call(this); };
+  await sleep(60);
+}
+
+function fill(sel, val) {
+  const el = $(sel);
+  el.value = val;
+  el.dispatchEvent(new W.Event('input', { bubbles: true }));
+  el.dispatchEvent(new W.Event('change', { bubbles: true }));
+}
+async function click(sel) { (typeof sel === 'string' ? $(sel) : sel).click(); await sleep(40); }
+async function openNew() { await click('#newBtn'); }
+async function fillForm(b) {
+  if (b.name != null) fill('#f-name', b.name);
+  if (b.phone != null) fill('#f-phone', b.phone);
+  if (b.date != null) fill('#f-date', b.date);
+  if (b.time != null) fill('#f-time', b.time);
+  if (b.place) $(`input[name=place][value=${b.place}]`).click();
+  if (b.address != null) fill('#f-address', b.address);
+  for (const s of b.services || []) $(`input[name=services][value="${s}"]`).click();
+  if (b.total != null) fill('#f-total', b.total);
+  if (b.advance != null) fill('#f-advance', b.advance);
+  if (b.notes != null) fill('#f-notes', b.notes);
+}
+async function addBooking(b) { await openNew(); await fillForm(b); await click('#saveBtn'); }
+const cardByName = name => $$('.card').find(c => c.querySelector('h3')?.textContent === name);
+const action = (card, label) => [...card.querySelectorAll('.actions a, .actions button')].find(x => x.textContent.trim() === label);
+
+const rec = (o) => Object.assign({ id: 'id' + Math.random().toString(36).slice(2, 8), phone: '9876543210', time: '', place: 'studio', address: '', services: [], total: 0, advance: 0, notes: '', status: 'upcoming', createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z' }, o);
+const SAMPLE = () => [
+  rec({ id: 'p1', name: 'Priya Sharma', phone: '9876543210', date: TODAY, time: '10:30', services: ['Party makeup', 'Hairstyling'], total: 3500, advance: 1000 }),
+  rec({ id: 'n1', name: 'Neha Gupta', phone: '9811122233', date: TODAY, time: '16:00', place: 'home', address: 'Raj Nagar Extension, Ghaziabad', services: ['Engagement makeup'], total: 6000, advance: 6000 }),
+  rec({ id: 'a1', name: 'Anjali Verma', phone: '9990001112', date: day(3), time: '05:30', place: 'venue', address: 'Hotel Radisson, Kaushambi', services: ['Bridal makeup'], total: 125000, advance: 10000, notes: 'Bride + 2 bridesmaids, "red" lehenga' }),
+];
+
+// ---------------------------------------------------------------- tests
+const TESTS = [
+
+async function fresh() {
+  group = 'Fresh start';
+  await load();
+  check('app renders header', $('#studioName')?.textContent.includes('VS Makeovers'));
+  check('empty state shown', $('#list').textContent.includes('No upcoming bookings'), $('#list').textContent);
+  check('stats are zero', $('#statToday').textContent === '0' && $('#statWeek').textContent === '0' && $('#statDue').textContent === '₹0');
+  check('backup reminder hidden with no bookings', $('#backupNag').hidden);
+  await click('[data-help]');
+  check('"How to use" link opens help', $('#helpDlg').open);
+  await click($('#helpDlg [data-close]'));
+  check('help closes', !$('#helpDlg').open);
+  await click('#openHelp');
+  check('? button opens help', $('#helpDlg').open);
+  await click($('#helpDlg [data-close]'));
+},
+
+async function validation() {
+  group = 'Form validation';
+  await load();
+  await openNew();
+  check('new booking form opens', $('#formDlg').open);
+  check('form title is "New booking"', $('#formTitle').textContent === 'New booking');
+  check('date defaults to today', $('#f-date').value === TODAY, $('#f-date').value);
+  check('status + delete hidden for new booking', $('#statusField').hidden && $('#deleteBtn').hidden);
+  check('address hidden for Studio', $('#addressField').hidden);
+  await click('#saveBtn');
+  check('empty name is rejected', $('#formDlg').open && stored().length === 0 && /name/i.test(toastText()), toastText());
+  fill('#f-name', 'Test Client'); fill('#f-phone', '12345');
+  await click('#saveBtn');
+  check('short phone is rejected', $('#formDlg').open && stored().length === 0 && /phone/i.test(toastText()), toastText());
+  fill('#f-phone', '9876543210'); fill('#f-date', '');
+  await click('#saveBtn');
+  check('missing date is rejected', $('#formDlg').open && stored().length === 0 && /date/i.test(toastText()), toastText());
+  $('input[name=place][value=venue]').click(); await sleep(20);
+  check('address shows for Venue', !$('#addressField').hidden);
+  $('input[name=place][value=studio]').click(); await sleep(20);
+  check('address hides again for Studio', $('#addressField').hidden);
+  await click($('#formDlg [data-close]'));
+  check('close button closes the form', !$('#formDlg').open);
+},
+
+async function addAndShow() {
+  group = 'Add booking';
+  await load();
+  await addBooking({ name: 'Priya Sharma', phone: '98765 43210', time: '10:30', services: ['Party makeup', 'Hairstyling'], total: 3500, advance: 1000, notes: 'Maroon lehenga' });
+  const s = stored();
+  check('saved to storage', s.length === 1, JSON.stringify(s));
+  const r = s[0] || {};
+  check('fields saved correctly', r.name === 'Priya Sharma' && r.date === TODAY && r.time === '10:30' && r.place === 'studio' && r.total === 3500 && r.advance === 1000 && r.status === 'upcoming' && r.notes === 'Maroon lehenga', JSON.stringify(r));
+  check('services saved', JSON.stringify(r.services) === '["Party makeup","Hairstyling"]', JSON.stringify(r.services));
+  check('form closes after save', !$('#formDlg').open);
+  check('"Booking saved" toast', toastText() === 'Booking saved', toastText());
+  const card = cardByName('Priya Sharma');
+  check('card appears in Upcoming', !!card);
+  check('grouped under Today', $$('#list .day-head')[0]?.textContent.startsWith('Today'), $$('#list .day-head')[0]?.textContent);
+  check('time shown as 10:30 AM', card?.querySelector('.time').textContent === '10:30 AM', card?.querySelector('.time').textContent);
+  check('2 service chips', card?.querySelectorAll('.chip').length === 2);
+  check('balance due badge ₹2,500', card?.querySelector('.badge.due')?.textContent === '₹2,500 due', card?.querySelector('.badge')?.textContent);
+  check('notes shown', card?.querySelector('.notes')?.textContent === 'Maroon lehenga');
+  check('stats: today 1, week 1, due ₹2,500', $('#statToday').textContent === '1' && $('#statWeek').textContent === '1' && $('#statDue').textContent === '₹2,500', [$('#statToday').textContent, $('#statWeek').textContent, $('#statDue').textContent]);
+  check('Call link is tel:+919876543210', action(card, 'Call')?.getAttribute('href') === 'tel:+919876543210', action(card, 'Call')?.getAttribute('href'));
+  const wa = action(card, 'WhatsApp')?.getAttribute('href') || '';
+  check('WhatsApp link goes to 919876543210', wa.startsWith('https://wa.me/919876543210?text='), wa);
+  const msg = decodeURIComponent(wa.split('text=')[1] || '');
+  check('WhatsApp message uses first name, services, studio', msg.includes('Hi Priya,') && msg.includes('Party makeup, Hairstyling') && msg.includes('VS Makeovers Studio') && msg.includes('10:30 AM'), msg);
+  check('Map link opens studio location', action(card, 'Map')?.getAttribute('href') === STUDIO_MAP);
+  check('Done + Edit buttons present', !!action(card, 'Done') && !!action(card, 'Edit'));
+
+  await load({ keep: true });
+  check('booking survives app reload', !!cardByName('Priya Sharma'));
+
+  await addBooking({ name: 'Intl Format', phone: '+91 98111 22233', date: day(1) });
+  await addBooking({ name: 'Zero Prefix', phone: '09990001112', date: day(1) });
+  const waOf = n => action(cardByName(n), 'WhatsApp')?.getAttribute('href') || '';
+  check('+91 number normalised for WhatsApp', waOf('Intl Format').startsWith('https://wa.me/919811122233?'), waOf('Intl Format'));
+  check('leading-0 number normalised for WhatsApp', waOf('Zero Prefix').startsWith('https://wa.me/919990001112?'), waOf('Zero Prefix'));
+  check('no-time booking shows "Any time"', cardByName('Intl Format')?.querySelector('.time').textContent === 'Any time');
+  check('tomorrow grouped under Tomorrow', $$('#list .day-head').some(h => h.textContent.startsWith('Tomorrow')));
+},
+
+async function placesClashAutofill() {
+  group = 'Places, clash warning, autofill';
+  await load({ appts: [SAMPLE()[0]] });
+  await openNew();
+  fill('#f-name', 'Kavya'); fill('#f-phone', '9000000001'); fill('#f-date', TODAY);
+  check('same-day notice before time is set', visible($('#clashAlert')) && $('#clashAlert').textContent.includes('Already booked this day'), $('#clashAlert').textContent);
+  fill('#f-time', '11:30');
+  check('clash warning within 2 hours', visible($('#clashAlert')) && $('#clashAlert').textContent.includes('Priya Sharma at 10:30 AM'), $('#clashAlert').textContent);
+  fill('#f-date', day(5));
+  check('no warning on a free day', $('#clashAlert').hidden);
+  fill('#f-date', TODAY);
+  $('input[name=place][value=venue]').click();
+  fill('#f-address', 'Hotel Radisson, Kaushambi');
+  await click('#saveBtn');
+  check('clash does not block saving', stored().length === 2);
+  const map = action(cardByName('Kavya'), 'Map')?.getAttribute('href');
+  check('venue Map link searches the address', map === 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent('Hotel Radisson, Kaushambi'), map);
+  check('venue place text shown', cardByName('Kavya')?.textContent.includes('Venue / Hotel: Hotel Radisson, Kaushambi'));
+
+  await openNew();
+  fill('#f-name', 'Studio Typed'); fill('#f-phone', '9000000002');
+  $('input[name=place][value=home]').click(); fill('#f-address', 'should be dropped');
+  $('input[name=place][value=studio]').click();
+  await click('#saveBtn');
+  check('address cleared when Studio is chosen', stored().find(a => a.name === 'Studio Typed')?.address === '');
+
+  await openNew();
+  const opts = $$('#knownClients option').map(o => o.value);
+  check('past clients offered in name list', opts.includes('Priya Sharma') && opts.includes('Kavya'), opts);
+  fill('#f-name', 'priya sharma');
+  check('returning client phone auto-fills', $('#f-phone').value === '9876543210', $('#f-phone').value);
+  await click($('#formDlg [data-close]'));
+},
+
+async function editDoneDelete() {
+  group = 'Edit, done, cancel, delete';
+  await load({ appts: SAMPLE() });
+  await click(action(cardByName('Priya Sharma'), 'Edit'));
+  check('edit form title', $('#formTitle').textContent === 'Edit booking');
+  check('edit form pre-filled', $('#f-name').value === 'Priya Sharma' && $('#f-time').value === '10:30' && $('#f-total').value === '3500');
+  check('services pre-ticked', $$('input[name=services]:checked').map(i => i.value).join() === 'Party makeup,Hairstyling', $$('input[name=services]:checked').map(i => i.value).join());
+  check('status + delete visible when editing', !$('#statusField').hidden && !$('#deleteBtn').hidden);
+  fill('#f-advance', '3500');
+  await click('#saveBtn');
+  check('"Booking updated" toast', toastText() === 'Booking updated', toastText());
+  check('edit does not duplicate', stored().length === 3);
+  check('fully paid shown after edit', cardByName('Priya Sharma')?.textContent.includes('Fully paid') && !cardByName('Priya Sharma')?.querySelector('.badge.due'));
+
+  await click(action(cardByName('Priya Sharma'), 'Done'));
+  check('Done saves status', stored().find(a => a.id === 'p1').status === 'done');
+  check('done booking leaves Upcoming', !cardByName('Priya Sharma'));
+  await click('[data-view=past]');
+  check('done booking in Past with badge', cardByName('Priya Sharma')?.querySelector('.badge.done')?.textContent === 'Done');
+  check('Past card has no Done button', !action(cardByName('Priya Sharma'), 'Done'));
+  await click('[data-view=upcoming]');
+
+  await click(action(cardByName('Anjali Verma'), 'Edit'));
+  fill('#f-status', 'cancelled');
+  await click('#saveBtn');
+  check('cancelled leaves Upcoming', !cardByName('Anjali Verma'));
+  check('cancelled excluded from balance', $('#statDue').textContent === '₹0', $('#statDue').textContent);
+  await click('[data-view=past]');
+  check('cancelled shown in Past', cardByName('Anjali Verma')?.querySelector('.badge.cancelled')?.textContent === 'Cancelled');
+  await click('[data-view=upcoming]');
+
+  await click(action(cardByName('Neha Gupta'), 'Edit'));
+  await click('#deleteBtn');
+  check('delete removes booking', !stored().some(a => a.id === 'n1') && !cardByName('Neha Gupta'));
+  check('"Booking deleted" toast', toastText() === 'Booking deleted', toastText());
+
+  W.confirm = () => false;
+  await click('[data-view=past]');
+  await click(action(cardByName('Anjali Verma'), 'Edit'));
+  await click('#deleteBtn');
+  check('cancelling the confirm keeps the booking', stored().some(a => a.id === 'a1'));
+  await click($('#formDlg [data-close]'));
+  W.confirm = () => true;
+},
+
+async function overdueAndWeek() {
+  group = 'Overdue + stats';
+  await load({ appts: [
+    rec({ id: 'o1', name: 'Overdue One', date: day(-2), time: '12:00', total: 2000, advance: 500 }),
+    rec({ id: 'w1', name: 'In Six Days', date: day(6) }),
+    rec({ id: 'w2', name: 'In Ten Days', date: day(10) }),
+    rec({ id: 'd1', name: 'Done Unpaid', date: day(-5), status: 'done', total: 1000, advance: 0 }),
+  ] });
+  const heads = $$('#list .day-head').map(h => h.textContent);
+  check('overdue section shown first', heads[0]?.includes('Earlier, not marked done (1)'), heads);
+  check('overdue card listed', !!cardByName('Overdue One'));
+  check('next 7 days counts only within a week', $('#statWeek').textContent === '1', $('#statWeek').textContent);
+  check('balance includes done-but-unpaid', $('#statDue').textContent === '₹2,500', $('#statDue').textContent);
+  check('later bookings still listed', !!cardByName('In Ten Days'));
+},
+
+async function search() {
+  group = 'Search';
+  await load({ appts: SAMPLE() });
+  const names = () => $$('.card h3').map(h => h.textContent).sort().join();
+  fill('#search', 'neha');
+  check('search by name', names() === 'Neha Gupta', names());
+  fill('#search', '98111');
+  check('search by phone digits', names() === 'Neha Gupta', names());
+  fill('#search', 'bridal');
+  check('search by service', names() === 'Anjali Verma', names());
+  fill('#search', 'kaushambi');
+  check('search by address', names() === 'Anjali Verma', names());
+  fill('#search', 'zzzz');
+  check('no-match message', $('#list').textContent.includes('No matches'));
+  fill('#search', '');
+  check('clearing search shows all', names() === 'Anjali Verma,Neha Gupta,Priya Sharma', names());
+},
+
+async function calendar() {
+  group = 'Calendar';
+  await load({ appts: SAMPLE() });
+  await click('[data-view=calendar]');
+  check('calendar view shown', !$('#calendarView').hidden);
+  check('search box still available', visible($('#search')));
+  const now = new Date();
+  const monthTitle = d => d.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
+  check('current month title', $('#calTitle').textContent === monthTitle(now), $('#calTitle').textContent);
+  const todayCell = $(`[data-day="${TODAY}"]`);
+  check('today highlighted + selected', todayCell?.classList.contains('is-today') && todayCell.classList.contains('sel'));
+  check('today shows 2 bookings', todayCell?.querySelector('.count')?.textContent === '2', todayCell?.innerHTML);
+  check('selected day lists its bookings', $$('.card h3').length === 2);
+  check('day cells have readable labels', todayCell?.getAttribute('aria-label').includes('2 bookings'), todayCell?.getAttribute('aria-label'));
+  await click('#calNext');
+  check('next month', $('#calTitle').textContent === monthTitle(new Date(now.getFullYear(), now.getMonth() + 1, 1)), $('#calTitle').textContent);
+  await click('#calPrev'); await click('#calPrev');
+  check('previous month', $('#calTitle').textContent === monthTitle(new Date(now.getFullYear(), now.getMonth() - 1, 1)), $('#calTitle').textContent);
+  await click('#calNext');
+  const target = day(3);
+  await click(`[data-day="${target}"]`);
+  check('tapping a day selects it', $(`[data-day="${target}"]`)?.classList.contains('sel'));
+  check('shows that day\'s booking', $$('.card h3').map(h => h.textContent).join() === 'Anjali Verma');
+  await click('#calAdd');
+  check('"Add on this day" pre-fills date', $('#f-date').value === target, $('#f-date').value);
+  fill('#f-name', 'Cal Client'); fill('#f-phone', '9000000003'); fill('#f-date', day(20));
+  await click('#saveBtn');
+  check('after saving, calendar jumps to that date', $(`[data-day="${day(20)}"]`)?.classList.contains('sel') && !!cardByName('Cal Client'));
+  await click('#newBtn');
+  check('New booking in calendar uses selected day', $('#f-date').value === day(20), $('#f-date').value);
+  await click($('#formDlg [data-close]'));
+  const empty = day(40);
+  await click('#calNext'); await click('#calNext');
+  const cell = $(`[data-day="${empty}"]`);
+  if (cell) { await click(cell); check('empty day message', $('#list').textContent.includes('No bookings this day')); }
+},
+
+async function settings() {
+  group = 'Settings';
+  await load({ appts: [SAMPLE()[0]] });
+  await click('#openSettings');
+  check('settings opens', $('#settingsDlg').open);
+  check('default services listed', $('#servicesText').value.split('\n').includes('Bridal makeup'));
+  $('#servicesText').value = 'Bridal makeup\nNail art\n\nNail art';
+  await click('#saveServices');
+  check('services saved (blank lines + duplicates dropped)', JSON.stringify(storedSettings().services) === '["Bridal makeup","Nail art"]', JSON.stringify(storedSettings().services));
+  $('#waText').value = 'Hello {name}! See you {date}{time} at {place}.';
+  await click('#saveWa');
+  check('WhatsApp template saved', storedSettings().waTemplate.startsWith('Hello {name}'));
+  await click($('#settingsDlg [data-close]'));
+  await openNew();
+  check('form uses new service list', $$('#servicePick input').map(i => i.value).join() === 'Bridal makeup,Nail art', $$('#servicePick input').map(i => i.value).join());
+  await click($('#formDlg [data-close]'));
+  await click(action(cardByName('Priya Sharma'), 'Edit'));
+  check('old services kept on existing booking', $$('#servicePick input:checked').map(i => i.value).join() === 'Party makeup,Hairstyling');
+  await click($('#formDlg [data-close]'));
+  const msg = decodeURIComponent((action(cardByName('Priya Sharma'), 'WhatsApp').getAttribute('href').split('text=')[1]));
+  check('WhatsApp uses custom template', msg.startsWith('Hello Priya! See you') && msg.includes('at 10:30 AM'), msg);
+  await load({ keep: true });
+  check('settings survive reload', JSON.stringify(storedSettings().services) === '["Bridal makeup","Nail art"]');
+  await click('#openSettings');
+  $('#servicesText').value = '   ';
+  await click('#saveServices');
+  check('empty service list falls back to defaults', storedSettings().services.length >= 5);
+  await click($('#settingsDlg [data-close]'));
+},
+
+async function backupRestore() {
+  group = 'Backup & restore';
+  await load({ appts: SAMPLE() });
+  check('backup reminder shows (3+ bookings, never backed up)', !$('#backupNag').hidden);
+  await click('#openSettings');
+  check('settings shows "Last backup: never"', $('#backupInfo').textContent.includes('never'));
+  await click('#exportJson'); await sleep(80);
+  check('backup file created', captured.length === 1);
+  const backup = captured[0] ? JSON.parse(await new Response(captured[0]).text()) : {};
+  check('backup has all bookings', backup.app === 'vs-appointments' && backup.appointments?.length === 3, JSON.stringify(backup).slice(0, 200));
+  check('backup includes settings', Array.isArray(backup.settings?.services));
+  check('last backup time recorded', !!storedSettings().lastBackup);
+  check('backup reminder hidden after backup', $('#backupNag').hidden);
+  check('"Backup saved" toast', toastText() === 'Backup saved', toastText());
+
+  await click('#exportCsv'); await sleep(80);
+  const csvBytes = captured[1] ? new Uint8Array(await new Response(captured[1]).arrayBuffer()) : new Uint8Array();
+  const csv = new TextDecoder('utf-8', { ignoreBOM: true }).decode(csvBytes);
+  const lines = csv.split('\r\n');
+  check('CSV has Excel BOM + header', csv.charCodeAt(0) === 0xFEFF && lines[0].includes('"Date","Time","Name","Phone"'), lines[0]);
+  check('CSV has one row per booking', lines.length === 4, lines.length);
+  check('CSV escapes quotes in notes', csv.includes('"Bride + 2 bridesmaids, ""red"" lehenga"'));
+  check('CSV balance column correct', csv.includes('"125000","10000","115000"'));
+
+  await click('#clearAll');
+  check('Start fresh deletes all bookings', stored().length === 0 && $$('.card').length === 0);
+  check('Start fresh keeps settings', !!storedSettings().lastBackup);
+
+  const restore = async (text, name = 'backup.json') => {
+    const dt = new W.DataTransfer();
+    dt.items.add(new W.File([text], name, { type: 'application/json' }));
+    const input = $('#importFile');
+    input.files = dt.files;
+    input.dispatchEvent(new W.Event('change', { bubbles: true }));
+    await sleep(150);
+  };
+  await restore(JSON.stringify(backup));
+  check('restore brings bookings back', stored().length === 3 && $$('.card').length === 3);
+  check('restore toast counts', toastText() === 'Restored: 3 new, 0 updated', toastText());
+  await restore(JSON.stringify(backup));
+  check('restoring twice makes no duplicates', stored().length === 3 && toastText() === 'Restored: 0 new, 0 updated', toastText());
+  const newer = JSON.parse(JSON.stringify(backup));
+  newer.appointments[0].name = 'Priya S. (updated)'; newer.appointments[0].updatedAt = '2099-01-01T00:00:00Z';
+  await restore(JSON.stringify(newer));
+  check('restore applies newer edits', stored().some(a => a.name === 'Priya S. (updated)') && toastText() === 'Restored: 0 new, 1 updated', toastText());
+  await restore('this is not json');
+  check('bad file is rejected safely', stored().length === 3 && /doesn't look like/.test(toastText()), toastText());
+  await restore(JSON.stringify([rec({ id: 'legacy', name: 'Legacy Array', date: day(2) })]));
+  check('plain-array backup accepted', stored().some(a => a.id === 'legacy'));
+
+  W.confirm = () => false;
+  await click('#openSettings');
+  await click('#clearAll');
+  check('cancelled Start fresh keeps bookings', stored().length === 4);
+  W.confirm = () => true;
+  await click($('#settingsDlg [data-close]'));
+
+  await load({ appts: SAMPLE(), settings: { lastBackup: new Date(Date.now() - 10 * 864e5).toISOString() } });
+  check('reminder after 10 days without backup', !$('#backupNag').hidden && $('#backupNagText').textContent.includes('10 days'), $('#backupNagText').textContent);
+  await load({ appts: SAMPLE().slice(0, 2) });
+  check('no reminder with under 3 bookings', $('#backupNag').hidden);
+  await load();
+  await click('#openSettings');
+  await click('#clearAll');
+  check('Start fresh with nothing to delete', toastText() === 'There are no bookings to delete', toastText());
+  await click($('#settingsDlg [data-close]'));
+},
+
+async function layout() {
+  group = 'iPhone layout (375px)';
+  const big = SAMPLE();
+  big.push(rec({ id: 'x', name: 'Mrs. Kavyanjali Chaturvedi-Srivastava', date: TODAY, time: '19:00', place: 'venue', address: 'Plot 12, Sector 5, Vaishali, Ghaziabad, near the big temple', services: ['Bridal makeup', 'Hairstyling', 'Saree draping', 'Pre-wedding shoot'], total: 0 }));
+  await load({ appts: big, settings: { lastBackup: new Date().toISOString() } });
+  const vw = D.documentElement.clientWidth;
+  const noOverflow = where => check(`no sideways scroll: ${where}`, D.documentElement.scrollWidth <= vw, `${D.documentElement.scrollWidth} > ${vw}`);
+  noOverflow('list');
+  const clipped = $$('.stat b').filter(b => b.scrollWidth > b.clientWidth + 1).map(b => b.textContent);
+  check('stat numbers not cut off (₹1,17,500)', clipped.length === 0 && $('#statDue').textContent === '₹1,17,500', clipped.join() || $('#statDue').textContent);
+  const cutLabels = $$('.actions a, .actions button').filter(b => b.scrollWidth > b.clientWidth + 1).map(b => b.textContent.trim());
+  check('action labels not cut off', cutLabels.length === 0, cutLabels);
+  const longCard = cardByName('Mrs. Kavyanjali Chaturvedi-Srivastava');
+  check('long name/address card fits', longCard && longCard.getBoundingClientRect().right <= vw + 0.5, longCard?.getBoundingClientRect().right);
+  const fab = $('#newBtn').getBoundingClientRect();
+  check('New booking button big enough to tap', fab.height >= 44, fab.height);
+  check('New booking button on screen', fab.left >= 0 && fab.right <= vw && fab.bottom <= W.innerHeight);
+  const tabs = $('.tabs');
+  if (W.getComputedStyle(tabs).position === 'fixed') {
+    const tb = tabs.getBoundingClientRect();
+    check('New booking button sits above tab bar', fab.bottom <= tb.top + 0.5, `${fab.bottom} vs ${tb.top}`);
+    check('tab bar pinned to bottom', Math.abs(tb.bottom - W.innerHeight) < 1, `${tb.bottom} vs ${W.innerHeight}`);
+  }
+  const tabH = Math.min(...$$('.tabs button').map(b => b.getBoundingClientRect().height));
+  check('tabs big enough to tap', tabH >= 36, tabH);
+  const iconH = Math.min(...$$('header .icon-btn').map(b => b.getBoundingClientRect().height));
+  check('header buttons big enough to tap', iconH >= 32, iconH);
+  W.scrollTo(0, D.documentElement.scrollHeight); await sleep(50);
+  const lastCard = $$('.card').at(-1).getBoundingClientRect();
+  const fabNow = $('#newBtn').getBoundingClientRect();
+  check('last booking can scroll clear of the bottom buttons', lastCard.bottom <= fabNow.top + 0.5, `${lastCard.bottom} vs ${fabNow.top}`);
+  W.scrollTo(0, 0);
+  const small = ['#search', '#f-name', '#f-phone', '#f-date', '#f-time', '#f-notes', '#f-total']
+    .filter(s => parseFloat(W.getComputedStyle($(s)).fontSize) < 16);
+  check('inputs ≥16px (stops iPhone zooming in on tap)', small.length === 0, small);
+
+  await click('[data-view=calendar]');
+  noOverflow('calendar');
+  const cells = $$('.cal-grid button');
+  check('calendar fits 7 columns', cells.every(c => c.getBoundingClientRect().right <= vw), '');
+  check('calendar days big enough to tap', Math.min(...cells.map(c => c.getBoundingClientRect().height)) >= 36);
+  await click('[data-view=upcoming]');
+
+  for (const [btn, dlg] of [['#newBtn', '#formDlg'], ['#openSettings', '#settingsDlg'], ['#openHelp', '#helpDlg']]) {
+    await click(btn);
+    const d = $(dlg);
+    const dr = d.getBoundingClientRect();
+    const wide = [...d.querySelectorAll('*')].filter(e => e.getBoundingClientRect().right > dr.right + 1).slice(0, 5)
+      .map(e => `${e.tagName.toLowerCase()}${e.id ? '#' + e.id : ''}.${e.className}[${Math.round(e.getBoundingClientRect().left)}-${Math.round(e.getBoundingClientRect().right)}]`);
+    check(`${dlg.slice(1)} fills screen without sideways scroll`, d.open && d.scrollWidth <= d.clientWidth + 1 && dr.width <= vw + 0.5, `${d.scrollWidth} / ${d.clientWidth}, dialog ${Math.round(dr.left)}-${Math.round(dr.right)}; ${wide.join(' ')}`);
+    await click(d.querySelector('[data-close]'));
+  }
+  await openNew();
+  const services = $$('#servicePick label');
+  check('service chips wrap inside the form', services.every(l => l.getBoundingClientRect().right <= vw), '');
+  const seg = $$('.seg label');
+  check('place options fit', seg.every(l => l.getBoundingClientRect().right <= vw && l.scrollWidth <= l.clientWidth + 1), seg.map(l => l.scrollWidth + '/' + l.clientWidth));
+  await click($('#formDlg [data-close]'));
+},
+
+async function reviewFixes() {
+  group = 'Review fixes (v2.1)';
+  const restore = async text => {
+    const dt = new W.DataTransfer();
+    dt.items.add(new W.File([text], 'backup.json', { type: 'application/json' }));
+    const input = $('#importFile');
+    input.files = dt.files;
+    input.dispatchEvent(new W.Event('change', { bubbles: true }));
+    await sleep(150);
+  };
+  const rescueKeys = () => Object.keys(localStorage).filter(k => k.startsWith('vs-appointments-v1-rescue-'));
+
+  // F1: a tampered backup must not be able to run code
+  await load({ appts: SAMPLE() });
+  window.__pwned = 0;
+  await restore(JSON.stringify({ appointments: [
+    rec({ id: 'x"><img src=x onerror="parent.__pwned=1">', name: 'Evil Id', date: TODAY }),
+    rec({ id: 'evil2', name: 'Evil Status', date: TODAY, status: 'upcoming"><img src=x onerror="parent.__pwned=1">' }),
+  ] }));
+  await sleep(100);
+  check('F1: crafted id or status cannot run code', window.__pwned === 0);
+  check('F1: record with unsafe id skipped and reported', !stored().some(a => a.name === 'Evil Id') && /1 skipped/.test(toastText()), toastText());
+  check('F1: unsafe status cleaned to "upcoming"', stored().find(a => a.id === 'evil2')?.status === 'upcoming');
+
+  // F2: wrong-type fields must not hide the other bookings
+  await load({ appts: SAMPLE() });
+  await restore(JSON.stringify({ appointments: [rec({ id: 'b1', name: 'Bad Types', date: TODAY, services: 'Party makeup', total: 'abc' })] }));
+  const b1 = stored().find(a => a.id === 'b1');
+  check('F2: wrong-type fields cleaned on restore', Array.isArray(b1?.services) && b1.total === 0, JSON.stringify(b1));
+  check('F2: all bookings still shown after a bad restore', $$('.card').length === 4, $$('.card').length);
+  await load({ appts: [...SAMPLE(), { id: 'old1', name: 12345, date: TODAY, services: 'Mehendi' }, { id: 'x y', name: 'No Good', date: 'tomorrow' }] });
+  check('F2: app works with bad data already stored', $$('.card').length === 4, $$('.card').length);
+  const kept = rescueKeys();
+  check('F2: unrepairable record kept aside, not deleted', kept.length === 1 && localStorage.getItem(kept[0]).includes('No Good'), kept);
+
+  // F6: unreadable storage is kept aside before anything can overwrite it
+  localStorage.clear();
+  localStorage.setItem('vs-appointments-v1', '{not json');
+  await load({ keep: true });
+  check('F6: unreadable stored data kept aside', rescueKeys().some(k => localStorage.getItem(k) === '{not json'), rescueKeys());
+
+  // Damaged settings fall back to safe defaults
+  await load({ appts: SAMPLE(), settings: { services: 'oops', waTemplate: 42, lastBackup: 'never' } });
+  const wa = decodeURIComponent(action(cardByName('Priya Sharma'), 'WhatsApp')?.getAttribute('href') || '');
+  check('damaged settings: WhatsApp message still works', wa.includes('Hi Priya'), wa.slice(0, 80));
+  await openNew();
+  check('damaged settings: default services offered', $$('#servicePick input').length === 10, $$('#servicePick input').length);
+  await click($('#formDlg [data-close]'));
+
+  // F4: spreadsheet formulas
+  await load({ appts: [rec({ id: 'c1', name: '=SUM(1+1)', phone: '+91 98765 43210', date: TODAY, notes: '- red lehenga' })] });
+  await click('#openSettings'); await click('#exportCsv'); await sleep(80);
+  const csv = captured[0] ? await new Response(captured[0]).text() : '';
+  check('F4: CSV cells starting = + - are saved as text', csv.includes(`"'=SUM(1+1)"`) && csv.includes(`"'+91 98765 43210"`) && csv.includes(`"'- red lehenga"`), csv.split('\r\n')[1]);
+  await click($('#settingsDlg [data-close]'));
+
+  // F8: amounts
+  await load();
+  await openNew();
+  await fillForm({ name: 'Amount Test', phone: '9876543210', date: TODAY, total: -500 });
+  await click('#saveBtn');
+  check('F8: negative amount rejected', stored().length === 0 && /negative/.test(toastText()), toastText());
+  await fillForm({ total: 5000, advance: 50000 });
+  await click('#saveBtn');
+  check('F8: advance above total rejected', stored().length === 0 && /more than the total/.test(toastText()), toastText());
+  await fillForm({ advance: 5000 });
+  await click('#saveBtn');
+  check('F8: fully paid booking saves', stored().length === 1 && stored()[0].advance === 5000);
+
+  // F7: restore behaviour explained
+  check('F7: help explains deleted bookings can come back on restore', $('#helpDlg').textContent.includes('will come back'));
+},
+
+async function pwa() {
+  if (!CHECK_PWA) return;
+  group = 'Offline & install';
+  await load();
+  const base = new URL(APP, location.href);
+  const manifest = await fetch(new URL('manifest.webmanifest', base)).then(r => r.json()).catch(() => null);
+  check('manifest loads', manifest && manifest.display === 'standalone' && manifest.icons?.length === 2, JSON.stringify(manifest));
+  for (const f of ['apple-touch-icon.png', 'icon-192.png', 'icon-512.png', 'sw.js']) {
+    const r = await fetch(new URL(f, base));
+    check(`${f} available`, r.ok, r.status);
+  }
+  const link = D.querySelector('link[rel=apple-touch-icon]')?.getAttribute('href');
+  check('iPhone home-screen icon linked', link === 'apple-touch-icon.png', link);
+  let swErr = '';
+  try { await W.navigator.serviceWorker.register('sw.js'); } catch (e) { swErr = e.message; }
+  const reg = await Promise.race([W.navigator.serviceWorker.ready, sleep(8000).then(() => null)]);
+  const regs = await W.navigator.serviceWorker.getRegistrations();
+  check('offline worker installs', !!reg?.active, `not ready; register error: ${swErr}; registrations: ${regs.map(r => r.scope + ' ' + !!r.installing + !!r.waiting + !!r.active)}`);
+  await sleep(500);
+  const swText = await fetch(new URL('sw.js', base)).then(r => r.text());
+  const version = swText.match(/VERSION = '([^']+)'/)?.[1];
+  const has = version && await W.caches.has(version);
+  const cache = has && await W.caches.open(version);
+  const cachedIndex = cache && await cache.match(new URL('index.html', base).href);
+  check(`app cached for offline (${version})`, !!cachedIndex, 'index.html not in cache');
+
+  // Needs run_tests.py, which can make the test server fail or slow down on request.
+  if (params.get('modes') !== '1') return;
+  group = 'Offline resilience';
+  await fetch('/__mode?down');
+  await load({ appts: SAMPLE() });
+  check('F3: app still opens when the site returns 404', !!$('#newBtn') && $$('.card').length === 3, (D.body?.innerText || '').slice(0, 80));
+  await fetch('/__mode?slow');
+  const t0 = Date.now();
+  await load({ appts: SAMPLE() });
+  const ms = Date.now() - t0;
+  check('F9: weak signal: saved copy shown within a few seconds', !!$('#newBtn') && ms < 7000, `${ms} ms`);
+  await fetch('/__mode?normal');
+},
+
+];
+
+(async () => {
+  fetch('/__log?start');
+  for (const t of TESTS) {
+    fetch('/__log?' + t.name);
+    try { await t(); }
+    catch (e) { results.push({ name: `${group}: crashed`, ok: false, detail: e.stack || String(e) }); }
+  }
+  check('no JavaScript errors', jsErrors.length === 0, jsErrors.join(' | '));
+  const failed = results.filter(r => !r.ok);
+  document.getElementById('out').innerHTML = results.map(r => `<span class="${r.ok ? 'pass' : 'fail'}">${r.ok ? 'PASS' : 'FAIL'} ${r.name}${r.detail ? ' — ' + r.detail : ''}</span>`).join('\n');
+  await fetch('/__results', { method: 'POST', body: JSON.stringify({ app: APP, total: results.length, failed: failed.length, results }) });
+})();
+</script>
+</body>
+</html>
