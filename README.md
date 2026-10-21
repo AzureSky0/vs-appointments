@@ -10,6 +10,8 @@ A simple booking book for Varsha's iPhone. It's a web app that installs on the h
 - **One-tap buttons on each booking:** Call, a WhatsApp reminder (message filled in, editable in Settings), Map (opens the studio location or the client's address), Done, and Edit.
 - **Double-booking warning:** shown when a new booking is within 2 hours of another one that day.
 - **Top of the screen:** how many bookings are today, how many in the next 7 days, and the total balance still to collect.
+- **Balance to collect:** tap the balance box to see who still owes money and how much, grouped into "to collect now" (finished or past bookings) and "upcoming". Each person has Received, Remind (a polite WhatsApp payment reminder) and Call buttons.
+- **Payments on Done:** tapping Done on a booking with money due asks whether it was paid in full, in part, or will be collected later. Finished bookings that still owe show a "₹ due" badge and a Received button in Past.
 - **Search:** by name, phone, service or address.
 - **Returning clients:** pick a past client's name and their phone number fills in.
 - **Backup:** saves a file to WhatsApp, Files, Drive or Mail through the iPhone share sheet, and restores from it. Also exports to Excel (CSV). The app reminds her if she hasn't backed up in 7 days.
@@ -30,7 +32,7 @@ A simple booking book for Varsha's iPhone. It's a web app that installs on the h
 python tests/run_tests.py
 ```
 
-Runs 170 checks in headless Edge (or Chrome) at iPhone width, including offline behaviour when the site is down or the network is slow. Only release when it prints **ALL PASSED**. The test page erases app data, so it refuses to run anywhere except `localhost`.
+Runs 214 checks in headless Edge (or Chrome) at iPhone width, including offline behaviour when the site is down or the network is slow. Only release when it prints **ALL PASSED**. The test page erases app data, so it refuses to run anywhere except `localhost`.
 
 ## Putting it online (needed for iPhone)
 

@@ -477,7 +477,7 @@ async function layout() {
   check('calendar days big enough to tap', Math.min(...cells.map(c => c.getBoundingClientRect().height)) >= 36);
   await click('[data-view=upcoming]');
 
-  for (const [btn, dlg] of [['#newBtn', '#formDlg'], ['#openSettings', '#settingsDlg'], ['#openHelp', '#helpDlg']]) {
+  for (const [btn, dlg] of [['#newBtn', '#formDlg'], ['#openSettings', '#settingsDlg'], ['#openHelp', '#helpDlg'], ['#openDue', '#dueDlg']]) {
     await click(btn);
     const d = $(dlg);
     const dr = d.getBoundingClientRect();
@@ -565,6 +565,108 @@ async function reviewFixes() {
 
   // F7: restore behaviour explained
   check('F7: help explains deleted bookings can come back on restore', $('#helpDlg').textContent.includes('will come back'));
+},
+
+async function payments() {
+  group = 'Payments & balance to collect';
+  const waText = el => decodeURIComponent((el?.getAttribute('href') || '').split('text=')[1] || '');
+  const dueRows = () => $$('#dueList .due-row').map(r => `${r.querySelector('.due-name').textContent}=${r.querySelector('.due-amt').textContent}`);
+
+  // The reported case: ₹5,000 booking, ₹2,000 advance, ₹3,000 due.
+  await load({ appts: [rec({ id: 'r1', name: 'Riya Kapoor', phone: '9811100000', date: TODAY, time: '11:00', services: ['Bridal makeup'], total: 5000, advance: 2000 })] });
+  check('form says "Paid so far"', $('label[for=f-advance]').textContent.startsWith('Paid so far'));
+  check('card shows Paid amount', cardByName('Riya Kapoor')?.textContent.includes('Paid ₹2,000'));
+  await click(action(cardByName('Riya Kapoor'), 'Done'));
+  check('Done with money due asks first', $('#payDlg').open && stored()[0].status === 'upcoming');
+  check('shows ₹3,000 still to collect', $('#payDue').textContent === '₹3,000', $('#payDue').textContent);
+  check('offers "Yes, paid ₹3,000"', $('#payFull').textContent === 'Yes, paid ₹3,000', $('#payFull').textContent);
+  check('offers "collect later"', visible($('#payLater')));
+  const pdr = $('#payDlg').getBoundingClientRect();
+  check('payment sheet fits the screen', $('#payDlg').scrollWidth <= $('#payDlg').clientWidth + 1 && pdr.width <= D.documentElement.clientWidth + 0.5);
+  check('amount box ≥16px (no iPhone zoom)', parseFloat(W.getComputedStyle($('#payAmount')).fontSize) >= 16);
+  await click($('#payDlg [data-close]'));
+  check('closing the sheet changes nothing', stored()[0].status === 'upcoming' && stored()[0].advance === 2000);
+
+  await click(action(cardByName('Riya Kapoor'), 'Done'));
+  await click('#payLater');
+  let r = stored()[0];
+  check('"collect later" marks done, keeps ₹3,000 due', r.status === 'done' && r.advance === 2000, JSON.stringify(r));
+  check('toast explains where the money went', toastText() === 'Marked done · ₹3,000 added to Balance to collect', toastText());
+  check('balance tile still ₹3,000', $('#statDue').textContent === '₹3,000');
+  await click('[data-view=past]');
+  const past = cardByName('Riya Kapoor');
+  check('Past card shows Done + ₹3,000 due', past?.querySelector('.badge.done')?.textContent === 'Done' && past?.querySelector('.badge.due')?.textContent === '₹3,000 due');
+  check('Past card has Received button', !!action(past, 'Received'));
+  await click('[data-view=upcoming]');
+
+  await click('#openDue');
+  check('balance tile opens the list', $('#dueDlg').open);
+  check('list total ₹3,000 from 1 booking', $('#dueTotal').textContent === '₹3,000' && $('#dueCount').textContent === 'from 1 booking', $('#dueTotal').textContent + ' ' + $('#dueCount').textContent);
+  check('list shows who and how much', dueRows().join() === 'Riya Kapoor=₹3,000', dueRows());
+  check('grouped under "To collect now"', $('#dueList .due-head span')?.textContent === 'To collect now');
+  const remind = $$('#dueList .due-actions a').find(a => a.textContent === 'Remind');
+  check('Remind opens WhatsApp to the client', remind?.getAttribute('href').startsWith('https://wa.me/919811100000?text='), remind?.getAttribute('href'));
+  check('payment reminder mentions amount', waText(remind).includes('₹3,000 is still pending') && waText(remind).startsWith('Hi Riya,'), waText(remind));
+  check('Call button in list', $$('#dueList .due-actions a').some(a => a.textContent === 'Call' && a.getAttribute('href') === 'tel:+919811100000'));
+
+  await click($$('#dueList button').find(b => b.textContent === 'Received'));
+  check('Received opens payment sheet', $('#payDlg').open && $('#payTitle').textContent === 'Record payment');
+  check('no "collect later" when recording payment', !visible($('#payLater')));
+  check('asks how much was paid', $('#payQ').textContent === 'How much did Riya pay?', $('#payQ').textContent);
+  await click('#payPart');
+  check('empty part amount rejected', $('#payDlg').open && /amount/.test(toastText()), toastText());
+  fill('#payAmount', '4000'); await click('#payPart');
+  check('more than due rejected', $('#payDlg').open && stored()[0].advance === 2000 && toastText() === "That's more than the ₹3,000 due", toastText());
+  fill('#payAmount', '1000'); await click('#payPart');
+  r = stored()[0];
+  check('part payment recorded', r.advance === 3000 && r.status === 'done', JSON.stringify(r));
+  check('part payment toast', toastText() === '₹1,000 received · ₹2,000 still due', toastText());
+  check('list updates to ₹2,000', $('#dueDlg').open && dueRows().join() === 'Riya Kapoor=₹2,000' && $('#dueTotal').textContent === '₹2,000', dueRows());
+  check('tile updates to ₹2,000', $('#statDue').textContent === '₹2,000');
+  await click($$('#dueList button').find(b => b.textContent === 'Received'));
+  check('full button shows remaining ₹2,000', $('#payFull').textContent === 'Paid in full, ₹2,000', $('#payFull').textContent);
+  await click('#payFull');
+  check('fully paid', stored()[0].advance === 5000 && $('#statDue').textContent === '₹0');
+  check('list empty when all collected', $('#dueList').textContent.includes('All payments collected') && $('#dueTotal').textContent === '₹0');
+  await click($('#dueDlg [data-close]'));
+  await click('[data-view=past]');
+  check('paid card loses due badge + Received', !cardByName('Riya Kapoor')?.querySelector('.badge.due') && !action(cardByName('Riya Kapoor'), 'Received'));
+  await click('[data-view=upcoming]');
+
+  // Other Done paths
+  await load({ appts: [
+    rec({ id: 'f1', name: 'Full Payer', date: TODAY, total: 4000, advance: 1000 }),
+    rec({ id: 'p1', name: 'Part Payer', date: TODAY, total: 3000, advance: 0 }),
+    rec({ id: 'z1', name: 'Already Paid', date: TODAY, total: 2000, advance: 2000 }),
+    rec({ id: 'n1', name: 'No Price', date: TODAY }),
+  ] });
+  await click(action(cardByName('Full Payer'), 'Done')); await click('#payFull');
+  check('Done → paid in full', stored().find(a => a.id === 'f1').advance === 4000 && stored().find(a => a.id === 'f1').status === 'done' && toastText() === 'Marked done · fully paid', toastText());
+  await click(action(cardByName('Part Payer'), 'Done')); fill('#payAmount', '1000'); await click('#payPart');
+  check('Done → part paid', stored().find(a => a.id === 'p1').advance === 1000 && stored().find(a => a.id === 'p1').status === 'done' && toastText() === 'Marked done · ₹2,000 still to collect', toastText());
+  await click(action(cardByName('Already Paid'), 'Done'));
+  check('nothing due: Done needs no question', !$('#payDlg').open && stored().find(a => a.id === 'z1').status === 'done' && toastText() === 'Marked done', toastText());
+  await click(action(cardByName('No Price'), 'Done'));
+  check('no price: Done needs no question', !$('#payDlg').open && stored().find(a => a.id === 'n1').status === 'done');
+
+  // Grouping, ordering, exclusions
+  await load({ appts: [
+    rec({ id: 'u2', name: 'Future Bride', date: day(5), services: ['Bridal makeup'], total: 20000, advance: 5000 }),
+    rec({ id: 'u1', name: 'Tomorrow Party', date: day(1), total: 3000, advance: 1000 }),
+    rec({ id: 'd2', name: 'Done Recent', date: day(-1), status: 'done', total: 2500, advance: 500 }),
+    rec({ id: 'd1', name: 'Done Older', date: day(-6), status: 'done', total: 1500, advance: 0 }),
+    rec({ id: 'o1', name: 'Overdue Not Done', date: day(-2), total: 1000, advance: 0 }),
+    rec({ id: 'c1', name: 'Cancelled Owes', date: day(-3), status: 'cancelled', total: 9000, advance: 0 }),
+  ] });
+  await click('#openDue');
+  check('total excludes cancelled', $('#dueTotal').textContent === '₹21,500' && $('#statDue').textContent === '₹21,500', $('#dueTotal').textContent);
+  const heads = $$('#dueList .due-head').map(h => h.textContent);
+  check('two groups with subtotals', heads.join('|') === 'To collect now₹4,500|Upcoming · collect on the day₹17,000', heads);
+  check('oldest first, past before upcoming', dueRows().join() === 'Done Older=₹1,500,Overdue Not Done=₹1,000,Done Recent=₹2,000,Tomorrow Party=₹2,000,Future Bride=₹15,000', dueRows());
+  const futureRemind = $$('#dueList .due-row').find(r => r.textContent.includes('Future Bride')).querySelector('a');
+  check('upcoming reminder says pay on the day', waText(futureRemind).includes('can be paid on the day'), waText(futureRemind));
+  await click($('#dueDlg [data-close]'));
+  check('balance tile is a button', $('#openDue').tagName === 'BUTTON' && $('#openDue').getAttribute('aria-label').includes('Balance to collect'));
 },
 
 async function pwa() {

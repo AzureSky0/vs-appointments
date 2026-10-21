@@ -229,6 +229,42 @@
   .backup-nag { background: var(--warn-soft); color: var(--warn); border-radius: 12px; padding: 10px 12px; font-size: 14px; margin-top: 12px; display: flex; justify-content: space-between; gap: 10px; align-items: center; }
   .backup-nag button { border: 0; background: transparent; color: inherit; font-weight: 700; white-space: nowrap; }
   [hidden] { display: none !important; }
+
+  /* Balance to collect + payments (shared by every theme; uses only theme tokens) */
+  :where(button.stat) {
+    font: inherit; color: inherit; border: 0; background: none; padding: 0; margin: 0;
+    text-align: start; cursor: pointer; width: 100%; -webkit-appearance: none; appearance: none;
+  }
+  .stat-due span::after { content: " \203A"; }
+  .badges { display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
+
+  .pay-summary { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; text-align: center; margin-bottom: 18px; }
+  .pay-who { font-weight: 600; font-size: 17px; overflow-wrap: anywhere; }
+  .pay-due b { display: block; font-size: 32px; font-weight: 700; color: var(--warn); line-height: 1.2; margin-top: 8px; }
+  .pay-due span { color: var(--muted); font-size: 13px; }
+  .pay-line { color: var(--muted); font-size: 14px; margin-top: 6px; }
+  .pay-q { font-weight: 600; margin: 0 0 10px; }
+  .pay-part { margin: 18px 0 14px; }
+  .pay-part-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+  .pay-part-row .btn { width: auto; margin: 0; padding-left: 20px; padding-right: 20px; }
+
+  .due-total { text-align: center; padding: 4px 0 6px; }
+  .due-total b { display: block; font-size: 34px; font-weight: 700; line-height: 1.15; color: var(--warn); }
+  .due-total span { color: var(--muted); font-size: 14px; }
+  .due-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin: 20px 2px 8px; font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); }
+  .due-head b { color: var(--text); font-size: 15px; letter-spacing: 0; white-space: nowrap; }
+  .due-row { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 14px; margin-bottom: 8px; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; }
+  .due-main { grid-column: 1; grid-row: 1; min-width: 0; }
+  .due-name { font-weight: 600; overflow-wrap: anywhere; }
+  .due-sub { font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
+  .due-amt { grid-column: 2; grid-row: 1; font-weight: 700; font-size: 17px; color: var(--warn); white-space: nowrap; }
+  .due-actions { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 10px; }
+  .due-actions a, .due-actions button {
+    display: flex; align-items: center; justify-content: center; min-height: 40px; padding: 8px 6px;
+    border-radius: 10px; border: 0; background: var(--surface-2); color: var(--brand);
+    font-size: 14px; font-weight: 600; text-decoration: none; white-space: nowrap;
+  }
+  .due-actions .primary { background: var(--brand); color: var(--brand-ink); }
 </style>
 </head>
 <body>
@@ -254,7 +290,7 @@
   <div class="stats">
     <div class="stat"><b id="statToday">0</b><span>Today</span></div>
     <div class="stat"><b id="statWeek">0</b><span>Next 7 days</span></div>
-    <div class="stat"><b id="statDue">₹0</b><span>Balance to collect</span></div>
+    <button type="button" class="stat stat-due" id="openDue" aria-label="Balance to collect: see who still has to pay"><b id="statDue">₹0</b><span>Balance to collect</span></button>
   </div>
 
   <div id="backupNag" class="backup-nag" hidden>
@@ -353,7 +389,7 @@
           <input id="f-total" name="total" type="number" inputmode="numeric" min="0" step="1" placeholder="0">
         </div>
         <div class="field">
-          <label for="f-advance">Advance paid ₹</label>
+          <label for="f-advance">Paid so far ₹</label>
           <input id="f-advance" name="advance" type="number" inputmode="numeric" min="0" step="1" placeholder="0">
         </div>
       </div>
@@ -448,7 +484,9 @@
     </div>
     <div class="section">
       <h3>Money</h3>
-      <p>Enter the <b>Total</b> and <b>Advance paid</b> when booking. Each card shows the balance, and the top of the screen shows the total still to collect. When the client pays the rest, tap Edit and change Advance to the full amount.</p>
+      <p>Enter the <b>Total</b> and the amount <b>Paid so far</b> (advance) when booking. Each card shows the balance still due.</p>
+      <p>When you tap <b>Done</b> on a booking that still has money due, the app asks whether it was paid in full, in part, or will be collected later.</p>
+      <p>Tap the <b>Balance to collect</b> box at the top to see everyone who still has to pay and how much. Tap <b>Received</b> when money comes in, or <b>Remind</b> to send a polite WhatsApp message.</p>
     </div>
     <div class="section">
       <h3>Two clashing bookings?</h3>
@@ -464,6 +502,47 @@
       <h3>Excel sheet</h3>
       <p>⚙️ → <b>Download as Excel sheet</b> gives you all bookings in a spreadsheet, for example to count the month's work.</p>
     </div>
+  </div>
+</dialog>
+
+<!-- Payment (asked when marking done, or when money comes in later) -->
+<dialog id="payDlg">
+  <div class="sheet-head">
+    <h2 id="payTitle">Mark as done</h2>
+    <button type="button" class="icon-btn" data-close aria-label="Close">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+    </button>
+  </div>
+  <div class="sheet-body">
+    <div class="pay-summary">
+      <div class="pay-who" id="payWho"></div>
+      <div class="pay-due"><b id="payDue">₹0</b><span>still to collect</span></div>
+      <div class="pay-line" id="payLine"></div>
+    </div>
+    <p class="pay-q" id="payQ">Has the client paid the balance?</p>
+    <button type="button" class="btn" id="payFull">Yes, paid in full</button>
+    <div class="field pay-part">
+      <label for="payAmount">Paid only part of it?</label>
+      <div class="pay-part-row">
+        <input id="payAmount" type="number" inputmode="numeric" min="1" step="1" placeholder="Amount received ₹">
+        <button type="button" class="btn secondary" id="payPart">Save</button>
+      </div>
+    </div>
+    <button type="button" class="btn secondary" id="payLater">Not paid yet, collect later</button>
+  </div>
+</dialog>
+
+<!-- Balance to collect: who owes what -->
+<dialog id="dueDlg">
+  <div class="sheet-head">
+    <h2>Balance to collect</h2>
+    <button type="button" class="icon-btn" data-close aria-label="Close">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+    </button>
+  </div>
+  <div class="sheet-body">
+    <div class="due-total"><b id="dueTotal">₹0</b><span id="dueCount"></span></div>
+    <div id="dueList"></div>
   </div>
 </dialog>
 
@@ -607,18 +686,20 @@
     wa: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.4 8.4 0 0 1-12.4 7.4L3 21l2.1-5.5A8.4 8.4 0 1 1 21 11.5z"/></svg>',
     map: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>',
     edit: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>',
-    check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>'
+    check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>',
+    rupee: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4h12M6 9h12M14.5 4c3.5 0 3.5 10 -2.5 10H6l8 7"/></svg>'
   };
 
   function cardHtml(a) {
     const bal = balance(a);
     const map = mapUrl(a);
     const status = a.status || 'upcoming';
-    const badge = status === 'done' ? '<span class="badge done">Done</span>'
+    const dueBadge = bal > 0 && status !== 'cancelled' ? `<span class="badge due">${money(bal)} due</span>` : '';
+    const badge = status === 'done' ? `<span class="badges"><span class="badge done">Done</span>${dueBadge}</span>`
       : status === 'cancelled' ? '<span class="badge cancelled">Cancelled</span>'
-      : bal > 0 ? `<span class="badge due">${money(bal)} due</span>` : '';
+      : dueBadge;
     const pay = (Number(a.total) || Number(a.advance))
-      ? `<div class="meta">Total <strong>${money(a.total)}</strong> · Advance <strong>${money(a.advance)}</strong>${bal ? ` · Balance <strong>${money(bal)}</strong>` : ' · Fully paid'}</div>` : '';
+      ? `<div class="meta">Total <strong>${money(a.total)}</strong> · Paid <strong>${money(a.advance)}</strong>${bal ? ` · Balance <strong>${money(bal)}</strong>` : ' · Fully paid'}</div>` : '';
     const showDone = status === 'upcoming';
     return `
       <article class="card ${esc(status)}">
@@ -640,6 +721,7 @@
           <a href="https://wa.me/${intlPhone(a.phone)}?text=${encodeURIComponent(waMessage(a))}" target="_blank" rel="noopener">${ICONS.wa}WhatsApp</a>
           ${map ? `<a href="${map}" target="_blank" rel="noopener">${ICONS.map}Map</a>` : ''}
           ${showDone ? `<button class="done-btn" data-act="done" data-id="${esc(a.id)}">${ICONS.check}Done</button>` : ''}
+          ${status === 'done' && bal > 0 ? `<button class="done-btn" data-act="collect" data-id="${esc(a.id)}">${ICONS.rupee}Received</button>` : ''}
           <button data-act="edit" data-id="${esc(a.id)}">${ICONS.edit}Edit</button>
         </div>
       </article>`;
@@ -859,9 +941,11 @@
       if (!a) return;
       if (btn.dataset.act === 'edit') openForm(a);
       if (btn.dataset.act === 'done') {
+        if (balance(a) > 0) { openPay(a, 'done'); return; }
         a.status = 'done'; a.updatedAt = new Date().toISOString(); persist(); render();
-        toast(balance(a) ? `Marked done. ${money(balance(a))} still to collect.` : 'Marked done');
+        toast('Marked done');
       }
+      if (btn.dataset.act === 'collect') openPay(a, 'collect');
       return;
     }
     const day = e.target.closest('[data-day]');
@@ -881,6 +965,101 @@
   $('#calAdd').addEventListener('click', () => openForm(null, calSel));
   $('#calPrev').addEventListener('click', () => { calMonth = new Date(calMonth.getFullYear(), calMonth.getMonth() - 1, 1); render(); });
   $('#calNext').addEventListener('click', () => { calMonth = new Date(calMonth.getFullYear(), calMonth.getMonth() + 1, 1); render(); });
+
+  // ---------- payments ----------
+  const payDlg = $('#payDlg'), dueDlg = $('#dueDlg');
+  let payFor = null, payMode = 'done';
+  const firstName = a => (a.name || '').split(' ')[0];
+
+  // mode 'done': tapping Done with money still due. mode 'collect': money comes in later.
+  function openPay(a, mode) {
+    payFor = a; payMode = mode;
+    const bal = balance(a);
+    $('#payTitle').textContent = mode === 'done' ? 'Mark as done' : 'Record payment';
+    $('#payWho').textContent = `${a.name} · ${fmtDate(a.date)}`;
+    $('#payDue').textContent = money(bal);
+    $('#payLine').textContent = `Total ${money(a.total)} · Paid so far ${money(a.advance)}`;
+    $('#payQ').textContent = mode === 'done' ? 'Has the client paid the balance?' : `How much did ${firstName(a)} pay?`;
+    $('#payFull').textContent = `${mode === 'done' ? 'Yes, paid' : 'Paid in full,'} ${money(bal)}`;
+    $('#payLater').hidden = mode !== 'done';
+    $('#payAmount').value = '';
+    payDlg.showModal();
+  }
+
+  function recordPayment(amount) {
+    const a = payFor;
+    if (!a) return;
+    const bal = balance(a);
+    a.advance = (Number(a.advance) || 0) + amount;
+    if (payMode === 'done') a.status = 'done';
+    a.updatedAt = new Date().toISOString();
+    persist();
+    payDlg.close();
+    render();
+    if (dueDlg.open) renderDue();
+    const left = balance(a);
+    if (payMode === 'done') {
+      toast(!left ? 'Marked done · fully paid' : amount ? `Marked done · ${money(left)} still to collect` : `Marked done · ${money(bal)} added to Balance to collect`);
+    } else {
+      toast(left ? `${money(amount)} received · ${money(left)} still due` : `${money(amount)} received · fully paid`);
+    }
+  }
+
+  $('#payFull').addEventListener('click', () => recordPayment(balance(payFor)));
+  $('#payLater').addEventListener('click', () => recordPayment(0));
+  $('#payPart').addEventListener('click', () => {
+    const amount = Math.round(Number($('#payAmount').value));
+    const bal = balance(payFor);
+    if (!(amount > 0)) { toast('Enter the amount received'); $('#payAmount').focus(); return; }
+    if (amount > bal) { toast(`That's more than the ${money(bal)} due`); $('#payAmount').focus(); return; }
+    recordPayment(amount);
+  });
+
+  function paymentReminder(a) {
+    const bal = money(balance(a));
+    const what = (a.services || []).join(', ') || 'makeup';
+    const when = fmtDate(a.date, { relative: false });
+    const upcoming = a.status === 'upcoming' && a.date >= todayStr();
+    return upcoming
+      ? `Hi ${firstName(a)}, this is Varsha from VS Makeovers Studio 💄\nA quick note that the balance of ${bal} for your ${what} appointment on ${when} can be paid on the day.\nThank you!`
+      : `Hi ${firstName(a)}, this is Varsha from VS Makeovers Studio 💄\nA gentle reminder that ${bal} is still pending for your ${what} on ${when}.\nThank you!`;
+  }
+
+  function dueRow(a) {
+    const what = (a.services || []).join(', ');
+    return `
+      <div class="due-row">
+        <div class="due-main">
+          <div class="due-name">${esc(a.name)}</div>
+          <div class="due-sub">${esc(fmtDate(a.date))}${a.status === 'done' ? ' · done' : ''}${what ? ' · ' + esc(what) : ''}</div>
+          <div class="due-sub">Total ${money(a.total)} · Paid ${money(a.advance)}</div>
+        </div>
+        <div class="due-amt">${money(balance(a))}</div>
+        <div class="due-actions">
+          <button class="primary" data-act="collect" data-id="${esc(a.id)}">Received</button>
+          <a href="https://wa.me/${intlPhone(a.phone)}?text=${encodeURIComponent(paymentReminder(a))}" target="_blank" rel="noopener">Remind</a>
+          <a href="tel:+${intlPhone(a.phone)}">Call</a>
+        </div>
+      </div>`;
+  }
+
+  function renderDue() {
+    const t = todayStr();
+    const owing = appts.filter(a => a.status !== 'cancelled' && balance(a) > 0);
+    const sum = list => list.reduce((s, a) => s + balance(a), 0);
+    // Finished or past appointments first (oldest first): that money is already earned.
+    const now = owing.filter(a => a.status === 'done' || a.date < t).sort(sortAsc);
+    const later = owing.filter(a => a.status !== 'done' && a.date >= t).sort(sortAsc);
+    $('#dueTotal').textContent = money(sum(owing));
+    $('#dueCount').textContent = owing.length ? `from ${owing.length} booking${owing.length > 1 ? 's' : ''}` : '';
+    const group = (title, list) => list.length
+      ? `<div class="due-head"><span>${title}</span><b>${money(sum(list))}</b></div>` + list.map(dueRow).join('') : '';
+    $('#dueList').innerHTML = owing.length
+      ? group('To collect now', now) + group('Upcoming · collect on the day', later)
+      : emptyHtml('All payments collected', 'Nobody owes anything right now.');
+  }
+
+  $('#openDue').addEventListener('click', () => { renderDue(); dueDlg.showModal(); });
 
   // ---------- settings & backup ----------
   const settingsDlg = $('#settingsDlg');
